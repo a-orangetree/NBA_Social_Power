@@ -93,6 +93,14 @@ ggplot(players_with_stats_salary, aes(x = PIE, y = SALARY)) +
 
 cor(players_with_stats_salary$PIE, players_with_stats_salary$SALARY)
 
+# Average age of each team / Perhaps compare this later to average salary/valuation
+br %>% 
+  group_by(Tm) %>% 
+  summarise(avg_age = mean(Age)) %>% 
+  ggplot(aes(avg_age, Tm, size = avg_age)) + geom_point()
+
+# Do more with age...?
+
 ####################################################
 # Question 1: Can we predict salary from performance statistics?
 ###################################################
@@ -151,16 +159,24 @@ plot4 <- stats_salary_results %>%
 # predictors... 
 grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
 
+# Should the best model selections be so far apart for each estimate?
+
+###########################################################
+# Can we predict team valuations from individual salaries?
+###########################################################
+
+head(salary)
+
+salary %>% 
+  group_by(TEAM) %>% 
+  summarise(totalSalary = sum(SALARY)) %>% 
+  ggplot(aes(totalSalary, TEAM, size = totalSalary)) + geom_point()
+
 ####################################################
 # Appendix/Garbage/Foolin' around 
 ###################################################
 
 stop('Everything below this point is garbage')
-
-# Why doesn't the below break out by team????
-x <- br %>% 
-  group_by('Tm') %>% 
-  summarise(avg_age = median(Age, na.rm = TRUE))
 
 # Quick diagnostic plots...
 ggplot(twitter_players, aes(TWITTER_FAVORITE_COUNT)) + geom_histogram()
