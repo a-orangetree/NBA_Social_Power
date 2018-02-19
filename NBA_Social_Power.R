@@ -1,11 +1,15 @@
 library(tidyverse)
+library(modelr)
+library(boot)
+library(leaps)
+library(gridExtra)
 
 # Import all files [for the moment? Not sure if we need all]
 #nba_2016_2017 <- read_csv('raw_data/nba_2016_2017_100.csv') # Not useful
 #attendance <- read_csv('raw_data/nba_2017_attendance.csv') # Redundant
 #att_val <- read_csv('raw_data/nba_2017_att_val.csv') # Redundant
-#att_val_elo <- read_csv('raw_data/nba_2017_att_val_elo.csv')# Redundant
-att_val_elo_with_cluster <- read_csv('raw_data/nba_2017_att_val_elo_with_cluster.csv')
+att_val_elo <- read_csv('raw_data/nba_2017_att_val_elo.csv')# Redundant
+#att_val_elo_with_cluster <- read_csv('raw_data/nba_2017_att_val_elo_with_cluster.csv')
 br <- read_csv('raw_data/nba_2017_br.csv')
 #elo <- read_csv('raw_data/nba_2017_elo.csv') # Redundant
 endorsements <- read_csv('raw_data/nba_2017_endorsements.csv')
@@ -71,6 +75,7 @@ dim(players_with_stats_combined)
 dim(salary)
 
 players_with_stats_salary <- merge(players_with_stats_combined, salary, by.x = 'PLAYER', by.y =  'NAME')
+players_with_stats_salary <- select(players_with_stats_salary, -POSITION.y, -TEAM.y)
 dim(players_with_stats_salary)
 glimpse(players_with_stats_salary)
 
@@ -89,13 +94,68 @@ ggplot(players_with_stats_salary, aes(x = PIE, y = SALARY)) +
 cor(players_with_stats_salary$PIE, players_with_stats_salary$SALARY)
 
 ####################################################
-# Model to predict salary from individual performance statistics
+# Question 1: Can we predict salary from performance statistics?
 ###################################################
+stats_salary_data <- players_with_stats_salary %>% 
+  select(-PLAYER, -X1, -POSITION.x, -TEAM.x)
 
+num_predictors <- dim(stats_salary_data)[2] - 2 
+
+stats_salary_model <- regsubsets(SALARY ~ .
+                                 ,data = stats_salary_data
+                                 ,nvmax = num_predictors)
+
+(stats_salary_summary <- summary(stats_salary_model))
+
+# Create tibble which contains data from results object
+stats_salary_results <- tibble(num_pred = 1:num_predictors
+                              ,rss = stats_salary_summary$rss
+                              ,rsquared = stats_salary_summary$rsq
+                              ,adj_rsquared = stats_salary_summary$adjr2
+                              ,cp = stats_salary_summary$cp
+                              ,bic = stats_salary_summary$bic)
+
+# RSS
+plot1 <- stats_salary_results %>% 
+  ggplot(aes(num_pred, rss)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(stats_salary_results$rss)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('RSS')
+
+# ADJ R-SQUARED
+plot2 <- stats_salary_results %>% 
+  ggplot(aes(num_pred, adj_rsquared)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.max(stats_salary_results$adj_rsquared)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('Adj R-squared')
+
+# CP
+plot3 <- stats_salary_results %>% 
+  ggplot(aes(num_pred, cp)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(stats_salary_results$cp)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('Cp')
+
+# BIC
+plot4 <- stats_salary_results %>% 
+  ggplot(aes(num_pred, bic)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(stats_salary_results$bic)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('BIC')
+
+# Each of the measures comes up with vastly different number of 
+# predictors... 
+grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
 
 ####################################################
 # Appendix/Garbage/Foolin' around 
 ###################################################
+
+stop('Everything below this point is garbage')
 
 # Why doesn't the below break out by team????
 x <- br %>% 
