@@ -219,9 +219,15 @@ salary_model1 <- lm(SALARY ~ AGE + POINTS, filter(players_with_stats_salary, tra
 players_with_stats_salary <-players_with_stats_salary %>% 
   add_predictions(salary_model1)
 
-# Calculate Test MSE Not Working******************************************
-rmse(filter(players_with_stats_salary, testing == TRUE)$SALARY
-     ,filter(players_with_stats_salary, testing == TRUE)$pred)
+players_with_stats_salary
+
+
+# Since the rmse() funciton isn't working, calcluate RMSE manually
+players_with_stats_salary <-  players_with_stats_salary %>%
+  mutate(actual_pred_diff = SALARY - pred
+         ,actual_pred_diff_sq = actual_pred_diff^2)
+
+sqrt(mean(players_with_stats_salary$actual_pred_diff_sq))
 
 ####################################################
 # Appendix/Garbage/Foolin' around 
