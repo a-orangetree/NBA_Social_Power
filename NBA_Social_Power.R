@@ -22,10 +22,15 @@ players_with_stats_combined <- read_csv('raw_data/nba_2017_players_stats_combine
 players_with_salary_wiki_twitter <- read_csv('raw_data/nba_2017_players_with_salary_wiki_twitter.csv')
 player_wikipedia <- read_csv('raw_data/nba_2017_player_wikipedia.csv')
 real_plus_minus <- read_csv('raw_data/nba_2017_real_plus_minus.csv')
-salary <- read_csv('raw_data/nba_2017_salary.csv')
+salary <- read_csv('raw_data/nba_2017_salary.csv') %>% 
+  mutate(SALARY2 = (SALARY / 1000000))
 team_valuations <- read_csv('raw_data/nba_2017_team_valuations.csv')
 twitter_players <- read_csv('raw_data/nba_2017_twitter_players.csv')
 
+# TODO:
+# 1. The EDA is somewhat a mess. Need to make it more into a story...
+# 2. Need to add x and y labels for each plot
+# 3. Can we get team name on the X axis for plots?
 
 ##############################################
 # Exploratory analysis begins here
@@ -64,12 +69,49 @@ att_val_elo %>%
   geom_jitter(width = 0.2, color = 'brown') +
   labs(x = 'Conference', 'Team Value')
 
+# Display histogram of salaries
+salary %>% 
+  ggplot(aes(SALARY2, labels = TRUE)) +
+  geom_histogram() +
+  stat_bin(geom="text", aes(label=..count..)) +
+  xlab('Salary in Millions') + 
+  ylab('Number of Players')
+
+# Display salaries by position 
+# Removed rows that only display a position a 'F' or 'G'
+salary %>% 
+  filter(POSITION == c('C', 'PF', 'PG', 'SF', 'SG')) %>% 
+  ggplot(aes(POSITION, SALARY)) +
+  geom_boxplot()
+
+# Which were the players that were removed
+# salary %>% 
+#   filter(POSITION == c('F', 'G'))
+
+# Find a quantiles
+quantile(salary$SALARY)
+quantile(salary$SALARY, seq(0, 1, .1))
+
 # Displays total Salary by team
-# TODO: We should overlap this with the graph of team valuations *****************************
 salary %>% 
   group_by(TEAM) %>% 
   summarise(totalSalary = sum(SALARY)) %>% 
   ggplot(aes(totalSalary, TEAM, size = totalSalary, color = totalSalary)) + geom_point()
+
+# Creates a dataframe with both salary and valuation by team
+# for ease of visualization
+total_salary_by_team <- salary %>% 
+  group_by(TEAM) %>% 
+  summarise(total_salary = sum(SALARY2))
+
+# Displays both valuations and salaries 
+merge(total_salary_by_team, team_valuations, by = 'TEAM') %>% 
+  mutate(val_salary_ratio = VALUE_MILLIONS / total_salary) %>% 
+  ggplot() +
+  geom_point(aes(val_salary_ratio, TEAM)) +
+  xlab('Ratio of team value to salary') +
+  ylab('Team')
+
 
 ##########################################################
 # Why does players_with_stats_combined have 40 less observations than br?
@@ -96,13 +138,12 @@ dim(salary)
 
 # Adding salary to performance data
 players_with_stats_salary <- merge(players_with_stats_combined, salary, by.x = 'PLAYER', by.y =  'NAME')
-players_with_stats_salary <- select(players_with_stats_salary, -POSITION.y, -TEAM.y)
+players_with_stats_salary <- select(players_with_stats_salary, -POSITION.y, -TEAM.y, -SALARY2)
 
 players_with_stats_salary <- drop_na(players_with_stats_salary)
 head(players_with_stats_salary)
 dim(players_with_stats_salary)
 
-### Age v Salary
 # Correlation between Age and Salary. Took out who are either very young or very old.
 # Not sure if meaningful...
 players_with_stats_salary %>% 
@@ -126,8 +167,6 @@ br %>%
   ggplot(aes(avg_age, Tm, size = avg_age, color = avg_age)) + 
   geom_point()
 
-
-### PIE v Salary
 # Some correlation between Player Effectiveness and Salary
 ggplot(players_with_stats_salary, aes(x = PIE, y = SALARY)) +
   geom_point() +
@@ -142,10 +181,19 @@ cor(players_with_stats_salary$PIE, players_with_stats_salary$SALARY)
 ###################################################
 
 # Remove qualitative data
+# Notes:
+# 1. Removed RPM because it was highly correlated with ORPM and DRPM
+# and thus was causing an error
+# 2. Only displays observations which the salary is less than the 90th percentile
 stats_salary_data <- players_with_stats_salary %>% 
-  select(-PLAYER, -X1, -POSITION.x, -TEAM.x)
+  select(-PLAYER, -X1, -POSITION.x, -TEAM.x, -RPM) %>% 
+  filter(SALARY <= quantile(salary$SALARY, .9))
 
-num_predictors <- dim(stats_salary_data)[2] - 2 #why does this need to be two instead of one ***************
+# Used the below to determine that RPM should be removed. Could
+# also remove ORPM and DRPM
+# Matrix::rankMatrix(pracma::rref(cor(stats_salary_data)))
+
+num_predictors <- dim(stats_salary_data)[2] - 1
 
 stats_salary_model <- regsubsets(SALARY ~ .
                                  ,data = stats_salary_data
@@ -198,14 +246,12 @@ plot4 <- stats_salary_results %>%
 grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
 # Should the best model selections be so far apart for each estimate?
 
-# Selecting a model with two predictors. Display coefficients
-coef(stats_salary_model, 2)
+# Selecting a model. Display coefficients
+coef(stats_salary_model, 4)
 
 ###########################################################
 # Can we predict team valuations from individual salaries?
 ###########################################################
-
-# Uses Validation Set Don't think this is working appropriately*************************************
 
 # Add columns to plays
 players_with_stats_salary <- players_with_stats_salary %>% 
@@ -215,7 +261,7 @@ players_with_stats_salary <- players_with_stats_salary %>%
 # Create linear model
 salary_model1 <- lm(SALARY ~ AGE + POINTS, filter(players_with_stats_salary, training == TRUE))
 
-# Add predictions back to data (should I only be adding predictions to the test?)**************************
+# Add predictions back to data
 players_with_stats_salary <-players_with_stats_salary %>% 
   add_predictions(salary_model1)
 
