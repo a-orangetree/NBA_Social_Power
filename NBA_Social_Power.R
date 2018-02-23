@@ -8,13 +8,15 @@ library(gridExtra)
 # Import all files [for the moment? Not sure if we need all]
 ########################################################
 
+# Redundant data files
 #nba_2016_2017 <- read_csv('raw_data/nba_2016_2017_100.csv') # Not useful
-#attendance <- read_csv('raw_data/nba_2017_attendance.csv') # Redundant
-#att_val <- read_csv('raw_data/nba_2017_att_val.csv') # Redundant
-att_val_elo <- read_csv('raw_data/nba_2017_att_val_elo.csv')# Redundant
+#attendance <- read_csv('raw_data/nba_2017_attendance.csv')
+#att_val <- read_csv('raw_data/nba_2017_att_val.csv')
 #att_val_elo_with_cluster <- read_csv('raw_data/nba_2017_att_val_elo_with_cluster.csv')
+#elo <- read_csv('raw_data/nba_2017_elo.csv')
+
+att_val_elo <- read_csv('raw_data/nba_2017_att_val_elo.csv')
 br <- read_csv('raw_data/nba_2017_br.csv')
-#elo <- read_csv('raw_data/nba_2017_elo.csv') # Redundant
 endorsements <- read_csv('raw_data/nba_2017_endorsements.csv')
 players_with_salary <- read_csv('raw_data/nba_2017_nba_players_with_salary.csv')
 pie <- read_csv('raw_data/nba_2017_pie.csv') #player impoct estimation
@@ -26,6 +28,7 @@ salary <- read_csv('raw_data/nba_2017_salary.csv') %>%
   mutate(SALARY2 = (SALARY / 1000000))
 team_valuations <- read_csv('raw_data/nba_2017_team_valuations.csv')
 twitter_players <- read_csv('raw_data/nba_2017_twitter_players.csv')
+team_name_crosswalk <- read_csv('raw_data/team_name_crosswalk.csv')
 
 # TODO:
 # 1. The EDA is somewhat a mess. Need to make it more into a story...
@@ -36,6 +39,8 @@ twitter_players <- read_csv('raw_data/nba_2017_twitter_players.csv')
 # Exploratory analysis begins here
 ##############################################
 
+team_name_crosswalk
+
 # Made the x monetary value due to difficult of fitting team names
 # Not a good graph
 ggplot(team_valuations, aes(x = VALUE_MILLIONS
@@ -43,11 +48,11 @@ ggplot(team_valuations, aes(x = VALUE_MILLIONS
                             ,size = VALUE_MILLIONS
                             ,color = VALUE_MILLIONS)) +
   geom_point() +
-  labs(x = 'Team Value')
+  labs(x = 'Team Value', y = 'Team Name')
 
 # Same as the above but in tabular format
-team_valuations %>% 
-  arrange(desc(VALUE_MILLIONS))
+# team_valuations %>% 
+#   arrange(desc(VALUE_MILLIONS))
 
 # Shows attendance and team value are correlated
 ggplot(att_val_elo, aes(x = VALUE_MILLIONS
@@ -59,7 +64,7 @@ ggplot(att_val_elo, aes(x = VALUE_MILLIONS
   labs(y = 'Attendance', x = 'Team Value')
 
 # To be exact...
-cor(att_val_elo$VALUE_MILLIONS, att_val_elo$AVG)
+# cor(att_val_elo$VALUE_MILLIONS, att_val_elo$AVG)
 
 # Compares team values between conferences... nothing significant
 att_val_elo %>% 
@@ -74,43 +79,55 @@ salary %>%
   ggplot(aes(SALARY2, labels = TRUE)) +
   geom_histogram() +
   stat_bin(geom="text", aes(label=..count..)) +
-  xlab('Salary in Millions') + 
-  ylab('Number of Players')
+  labs(x = 'Salary in Millions', y = 'Number of Players')
+
+# Find a quantiles
+quantile(salary$SALARY, seq(0, 1, .1))
 
 # Display salaries by position 
 # Removed rows that only display a position a 'F' or 'G'
 salary %>% 
   filter(POSITION == c('C', 'PF', 'PG', 'SF', 'SG')) %>% 
   ggplot(aes(POSITION, SALARY)) +
-  geom_boxplot()
+  geom_boxplot() +
+  labs(x = 'Salary', y = 'Posiiton')
 
-# Which were the players that were removed
+# Which were the players that were not included in the above
 # salary %>% 
 #   filter(POSITION == c('F', 'G'))
 
-# Find a quantiles
-quantile(salary$SALARY)
-quantile(salary$SALARY, seq(0, 1, .1))
-
-# Displays total Salary by team
+# Displays total salary by team
 salary %>% 
   group_by(TEAM) %>% 
   summarise(totalSalary = sum(SALARY)) %>% 
-  ggplot(aes(totalSalary, TEAM, size = totalSalary, color = totalSalary)) + geom_point()
+  ggplot(aes(totalSalary, TEAM, size = totalSalary, color = totalSalary)) +
+  geom_point() +
+  labs(x = 'Total Salary', y = 'Team')
+
+# Displays median salary by team
+salary %>% 
+  group_by(TEAM) %>% 
+  summarise(median_salary = median(SALARY)) %>% 
+  ggplot(aes(median_salary, TEAM, size = median_salary, color = median_salary)) +
+  geom_point() +
+  labs(x = 'Median Salary', y = 'Team')
 
 # Creates a dataframe with both salary and valuation by team
 # for ease of visualization
 total_salary_by_team <- salary %>% 
   group_by(TEAM) %>% 
-  summarise(total_salary = sum(SALARY2))
+  summarise(total_salary = sum(SALARY2)
+            ,median_salary = median(SALARY2)
+            ,mean_salary = mean(SALARY2)
+            ,low_salary = min(SALARY2)
+            ,high_salary = max(SALARY2))
 
 # Displays both valuations and salaries 
-merge(total_salary_by_team, team_valuations, by = 'TEAM') %>% 
+inner_join(total_salary_by_team, team_valuations, by = 'TEAM') %>% 
   mutate(val_salary_ratio = VALUE_MILLIONS / total_salary) %>% 
   ggplot() +
-  geom_point(aes(val_salary_ratio, TEAM)) +
-  xlab('Ratio of team value to salary') +
-  ylab('Team')
+  geom_point(aes(val_salary_ratio, TEAM, color = val_salary_ratio, size = val_salary_ratio)) +
+  labs(x = 'Ratio of team value to salary', y = 'Team')
 
 
 ##########################################################
@@ -137,7 +154,7 @@ dim(players_with_stats_combined)
 dim(salary)
 
 # Adding salary to performance data
-players_with_stats_salary <- merge(players_with_stats_combined, salary, by.x = 'PLAYER', by.y =  'NAME')
+players_with_stats_salary <- inner_join(players_with_stats_combined, salary, by = c('PLAYER' =  'NAME'))
 players_with_stats_salary <- select(players_with_stats_salary, -POSITION.y, -TEAM.y, -SALARY2)
 
 players_with_stats_salary <- drop_na(players_with_stats_salary)
