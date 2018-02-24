@@ -14,6 +14,7 @@ library(gridExtra)
 #att_val <- read_csv('raw_data/nba_2017_att_val.csv')
 #att_val_elo_with_cluster <- read_csv('raw_data/nba_2017_att_val_elo_with_cluster.csv')
 #elo <- read_csv('raw_data/nba_2017_elo.csv')
+#player_wikipedia <- read_csv('raw_data/nba_2017_player_wikipedia.csv') # bad data: only contains Russell Westbrook
 
 att_val_elo <- read_csv('raw_data/nba_2017_att_val_elo.csv')
 br <- read_csv('raw_data/nba_2017_br.csv')
@@ -22,24 +23,51 @@ players_with_salary <- read_csv('raw_data/nba_2017_nba_players_with_salary.csv')
 pie <- read_csv('raw_data/nba_2017_pie.csv') #player impoct estimation
 players_with_stats_combined <- read_csv('raw_data/nba_2017_players_stats_combined.csv')
 players_with_salary_wiki_twitter <- read_csv('raw_data/nba_2017_players_with_salary_wiki_twitter.csv')
-player_wikipedia <- read_csv('raw_data/nba_2017_player_wikipedia.csv')
 real_plus_minus <- read_csv('raw_data/nba_2017_real_plus_minus.csv')
 salary <- read_csv('raw_data/nba_2017_salary.csv') %>% 
   mutate(SALARY2 = (SALARY / 1000000))
 team_valuations <- read_csv('raw_data/nba_2017_team_valuations.csv')
-twitter_players <- read_csv('raw_data/nba_2017_twitter_players.csv')
-team_name_crosswalk <- read_csv('raw_data/team_name_crosswalk.csv')
+player_twitter <- read_csv('raw_data/nba_2017_twitter_players.csv')
+team_name_crosswalk <- read_csv('raw_data/team_name_crosswalk.csv') #Doesn't map 100% from Short to Long
+
 
 # TODO:
 # 1. The EDA is somewhat a mess. Need to make it more into a story...
 # 2. Need to add x and y labels for each plot
 # 3. Can we get team name on the X axis for plots?
+# 4. Start social media analysis
+
+
+################################################
+# Combine / create data sets
+################################################
+
+
+# Creates a dataframe with both salary and valuation by team
+salary_valuations_by_team <- salary %>% 
+  group_by(TEAM) %>% 
+  summarise(total_salary = sum(SALARY2)
+            ,median_salary = median(SALARY2)
+            ,mean_salary = mean(SALARY2)
+            ,low_salary = min(SALARY2)
+            ,high_salary = max(SALARY2)) %>% 
+  inner_join(team_valuations, by = 'TEAM') %>% 
+  mutate(val_salary_ratio = VALUE_MILLIONS / total_salary)
+
+# Aggregates social media statistics at a team level
+# Removes players which played for more than one team
+team_twitter_wiki <- drop_na(players_with_salary_wiki_twitter) %>% 
+  group_by(TEAM) %>% 
+  summarise(total_pageviews = sum(PAGEVIEWS)
+            ,total_twitter_favorite = sum(TWITTER_FAVORITE_COUNT)
+            ,total_twitter_retweet = sum(TWITTER_RETWEET_COUNT)) %>% 
+  filter(!str_detect(TEAM, '/'))
+
 
 ##############################################
 # Exploratory analysis begins here
 ##############################################
 
-team_name_crosswalk
 
 # Made the x monetary value due to difficult of fitting team names
 # Not a good graph
@@ -74,11 +102,11 @@ att_val_elo %>%
   geom_jitter(width = 0.2, color = 'brown') +
   labs(x = 'Conference', 'Team Value')
 
-# Display histogram of salaries
+# Display histogram of salaries... not surprisingly, right skewed
 salary %>% 
   ggplot(aes(SALARY2, labels = TRUE)) +
-  geom_histogram() +
-  stat_bin(geom="text", aes(label=..count..)) +
+  geom_histogram(binwidth = 2.5) +
+  stat_bin(geom="text", aes(label=..count..), binwidth = 2.5) +
   labs(x = 'Salary in Millions', y = 'Number of Players')
 
 # Find a quantiles
@@ -93,62 +121,68 @@ salary %>%
   labs(x = 'Salary', y = 'Posiiton')
 
 # Which were the players that were not included in the above
-# salary %>% 
+# Totals 13 players
+# salary %>%
 #   filter(POSITION == c('F', 'G'))
 
 # Displays total salary by team
-salary %>% 
-  group_by(TEAM) %>% 
-  summarise(totalSalary = sum(SALARY)) %>% 
-  ggplot(aes(totalSalary, TEAM, size = totalSalary, color = totalSalary)) +
+salary_valuations_by_team %>% 
+  ggplot(aes(total_salary, TEAM, size = total_salary, color = total_salary)) +
   geom_point() +
   labs(x = 'Total Salary', y = 'Team')
 
 # Displays median salary by team
-salary %>% 
-  group_by(TEAM) %>% 
-  summarise(median_salary = median(SALARY)) %>% 
+salary_valuations_by_team %>% 
   ggplot(aes(median_salary, TEAM, size = median_salary, color = median_salary)) +
   geom_point() +
   labs(x = 'Median Salary', y = 'Team')
 
-# Creates a dataframe with both salary and valuation by team
-# for ease of visualization
-total_salary_by_team <- salary %>% 
-  group_by(TEAM) %>% 
-  summarise(total_salary = sum(SALARY2)
-            ,median_salary = median(SALARY2)
-            ,mean_salary = mean(SALARY2)
-            ,low_salary = min(SALARY2)
-            ,high_salary = max(SALARY2))
-
 # Displays both valuations and salaries 
-inner_join(total_salary_by_team, team_valuations, by = 'TEAM') %>% 
-  mutate(val_salary_ratio = VALUE_MILLIONS / total_salary) %>% 
+salary_valuations_by_team %>% 
   ggplot() +
   geom_point(aes(val_salary_ratio, TEAM, color = val_salary_ratio, size = val_salary_ratio)) +
   labs(x = 'Ratio of team value to salary', y = 'Team')
+
+## Social Media quantiles
+# use players with gt 1000 views
+quantile(players_with_salary_wiki_twitter$PAGEVIEWS, seq(0, 1, .1)) 
+
+# use players with gt 100 favorite
+quantile(drop_na(players_with_salary_wiki_twitter)$TWITTER_FAVORITE_COUNT, seq(0, 1, .1))
+
+# use players with gt 150 retweet
+quantile(drop_na(players_with_salary_wiki_twitter)$TWITTER_RETWEET_COUNT, seq(0, 1, .1))
+
+# Simple plot of social media stats by team
+# Why don't the colors correspond to the label?*****************************************************
+ggplot(team_twitter_wiki) + 
+  geom_point(aes(total_pageviews, TEAM, color = 'red')) +
+  geom_point(aes(total_twitter_favorite, TEAM, color = 'blue')) +
+  geom_point(aes(total_twitter_retweet, TEAM, color = 'black'))
 
 
 ##########################################################
 # Why does players_with_stats_combined have 40 less observations than br?
 ##########################################################
 
-dim(players_with_stats_combined)
-dim(br)
 
-# But, shows no players missing???
-players1 <- unique(players_with_stats_combined$PLAYER)
-players2 <- unique(br$Player)
+# dim(players_with_stats_combined)
+# dim(br)
+
+# # But, shows no players missing???
+# players1 <- unique(players_with_stats_combined$PLAYER)
+# players2 <- unique(br$Player)
 
 # Not sure why these players are missing yet from the players_with_stats_combined
 # table. 
-(missing_players <- setdiff(players2, players1))
-filter(br, Player %in% missing_players)
+# (missing_players <- setdiff(players2, players1))
+# filter(br, Player %in% missing_players)
+
 
 #######################################
 # Below seeks correlations between individual performance statistics and salary
 ######################################
+
 
 dim(players_with_stats_combined)
 dim(salary)
@@ -196,6 +230,7 @@ cor(players_with_stats_salary$PIE, players_with_stats_salary$SALARY)
 ####################################################
 # Question 1: Can we predict salary from performance statistics?
 ###################################################
+
 
 # Remove qualitative data
 # Notes:
@@ -266,9 +301,11 @@ grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
 # Selecting a model. Display coefficients
 coef(stats_salary_model, 4)
 
+
 ###########################################################
 # Can we predict team valuations from individual salaries?
 ###########################################################
+
 
 # Add columns to plays
 players_with_stats_salary <- players_with_stats_salary %>% 
