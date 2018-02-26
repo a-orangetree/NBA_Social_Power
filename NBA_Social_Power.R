@@ -68,6 +68,9 @@ team_twitter_wiki <- drop_na(players_with_salary_wiki_twitter) %>%
 # Exploratory analysis begins here
 ##############################################
 
+# pie %>% select(-PLAYER, -TEAM) %>% cor()
+# pie %>% select(-PLAYER, -TEAM) %>% pairs()
+
 
 # Made the x monetary value due to difficult of fitting team names
 # Not a good graph
@@ -309,17 +312,19 @@ coef(stats_salary_model, 4)
 
 # Add columns to plays
 players_with_stats_salary <- players_with_stats_salary %>% 
-  mutate(training = sample(c(TRUE, FALSE), nrow(players_with_stats_salary), rep = TRUE)
+  mutate(training = sample(c(TRUE, FALSE), nrow(players_with_stats_salary), prob = c(.9, .1),rep = TRUE)
            ,testing = !training)
 
 # Create linear model
 salary_model1 <- lm(SALARY ~ AGE + POINTS, filter(players_with_stats_salary, training == TRUE))
+summary(salary_model1)
+
+# Why doesn't this work? ********************************************
+autoplot(salary_model1) 
 
 # Add predictions back to data
 players_with_stats_salary <-players_with_stats_salary %>% 
   add_predictions(salary_model1)
-
-players_with_stats_salary
 
 
 # Since the rmse() funciton isn't working, calcluate RMSE manually
@@ -329,23 +334,19 @@ players_with_stats_salary <-  players_with_stats_salary %>%
 
 sqrt(mean(players_with_stats_salary$actual_pred_diff_sq))
 
+#####################################################
+# Predict salary based on social media stats or vice versa
+######################################################
+
 ####################################################
 # Appendix/Garbage/Foolin' around 
 ###################################################
 
 stop('Everything below this point is garbage')
 
-# Quick diagnostic plots...
-ggplot(twitter_players, aes(TWITTER_FAVORITE_COUNT)) + geom_histogram()
-ggplot(player_wikipedia, aes(pageviews)) + geom_histogram()
-
 # Any correlation between salary and games won? ...Meh. 
-# ...Wait, does W mean games W? Variable does not behave as expected
+# ...Wait, does W mean games won? Variable does not behave as expected
 # where players on the same team have different W values.
 ggplot(players_with_stats_salary, aes(x = W, y = SALARY)) + 
   geom_point() +
   geom_smooth()
-
-# Are any numerical statistics correlated with anything else?
-pie %>% select(-PLAYER, -TEAM) %>% 
-  pairs()
