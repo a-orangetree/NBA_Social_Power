@@ -306,7 +306,7 @@ coef(stats_salary_model, 4)
 
 
 ###########################################################
-# Can we predict team valuations from individual salaries?
+# Question2: Can we predict team valuations from individual salaries?
 ###########################################################
 
 
@@ -335,8 +335,12 @@ players_with_stats_salary <-  players_with_stats_salary %>%
 sqrt(mean(players_with_stats_salary$actual_pred_diff_sq))
 
 #####################################################
-# Predict salary based on social media stats or vice versa
+# Question 3/4: Predict salary based on social media stats or vice versa
 ######################################################
+
+#####################################################
+# Question 5: Can we predict points from other performance statistics?
+#####################################################
 
 ####################################################
 # Appendix/Garbage/Foolin' around 
