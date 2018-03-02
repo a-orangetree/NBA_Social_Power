@@ -234,6 +234,9 @@ cor(players_with_stats_salary$PIE, players_with_stats_salary$SALARY)
 # Question 1: Can we predict salary from performance statistics?
 ###################################################
 
+# Used the below to determine that RPM should be removed. Could
+# also remove ORPM and DRPM
+# Matrix::rankMatrix(pracma::rref(cor(stats_salary_data)))
 
 # Remove qualitative data
 # Notes:
@@ -244,17 +247,15 @@ stats_salary_data <- players_with_stats_salary %>%
   select(-PLAYER, -X1, -POSITION.x, -TEAM.x, -RPM) %>% 
   filter(SALARY <= quantile(salary$SALARY, .9))
 
-# Used the below to determine that RPM should be removed. Could
-# also remove ORPM and DRPM
-# Matrix::rankMatrix(pracma::rref(cor(stats_salary_data)))
+# Create variable to hold the number of predictors
+num_predictors <- dim(training_data)[2] - 1
 
-num_predictors <- dim(stats_salary_data)[2] - 1
-
+# Perform best-subsets 
 stats_salary_model <- regsubsets(SALARY ~ .
                                  ,data = stats_salary_data
                                  ,nvmax = num_predictors)
 
-(stats_salary_summary <- summary(stats_salary_model))
+stats_salary_summary <- summary(stats_salary_model)
 
 # Create tibble which contains data from results object
 stats_salary_results <- tibble(num_pred = 1:num_predictors
@@ -299,40 +300,53 @@ plot4 <- stats_salary_results %>%
 # Each of the measures comes up with vastly different number of 
 # predictors... 
 grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
-# Should the best model selections be so far apart for each estimate?
+# Should the best model selections be so far apart for each estimate? *****************************
 
 # Selecting a model. Display coefficients
 coef(stats_salary_model, 4)
 
+# Create training and test data sets
+training_data <- stats_salary_data %>% sample_frac(.8)
+test_data <- setdiff(stats_salary_data, training_data)
+
+# Fit model using the coefficients above and add predictions to test data
+salary_model <- lm(SALARY ~ Rk + AGE + ORPM + W, data = training_data)
+test_data <- add_predictions(test_data, salary_model)
+
+# Calculate root mean squared error
+rmse(salary_model, test_data)
+
+########### Do we need the below?
+##########################################################################
+# # Add columns to players
+# players_with_stats_salary <- players_with_stats_salary %>% 
+#   mutate(training = sample(c(TRUE, FALSE), nrow(players_with_stats_salary), prob = c(.8, .2),rep = TRUE)
+#            ,testing = !training)
+# 
+# # Create linear model
+# salary_model1 <- lm(SALARY ~ AGE + POINTS, filter(players_with_stats_salary, training == TRUE))
+# summary(salary_model1)
+# 
+# # Why doesn't this work? ********************************************
+# # autoplot(salary_model1) 
+# 
+# # Add predictions back to data
+# players_with_stats_salary <-players_with_stats_salary %>% 
+#   add_predictions(salary_model1)
+# 
+# # Since the rmse() funciton isn't working, calcluate RMSE manually
+# players_with_stats_salary <-  players_with_stats_salary %>%
+#   mutate(actual_pred_diff = SALARY - pred
+#          ,actual_pred_diff_sq = actual_pred_diff^2)
+# 
+# sqrt(mean(players_with_stats_salary$actual_pred_diff_sq))
+##########################################################################
+
+########### How could we do this using k-fold cross-validation instead of validation set?
 
 ###########################################################
 # Question2: Can we predict team valuations from individual salaries?
 ###########################################################
-
-
-# Add columns to plays
-players_with_stats_salary <- players_with_stats_salary %>% 
-  mutate(training = sample(c(TRUE, FALSE), nrow(players_with_stats_salary), prob = c(.9, .1),rep = TRUE)
-           ,testing = !training)
-
-# Create linear model
-salary_model1 <- lm(SALARY ~ AGE + POINTS, filter(players_with_stats_salary, training == TRUE))
-summary(salary_model1)
-
-# Why doesn't this work? ********************************************
-autoplot(salary_model1) 
-
-# Add predictions back to data
-players_with_stats_salary <-players_with_stats_salary %>% 
-  add_predictions(salary_model1)
-
-
-# Since the rmse() funciton isn't working, calcluate RMSE manually
-players_with_stats_salary <-  players_with_stats_salary %>%
-  mutate(actual_pred_diff = SALARY - pred
-         ,actual_pred_diff_sq = actual_pred_diff^2)
-
-sqrt(mean(players_with_stats_salary$actual_pred_diff_sq))
 
 #####################################################
 # Question 3/4: Predict salary based on social media stats or vice versa
