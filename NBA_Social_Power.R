@@ -30,18 +30,19 @@ team_valuations <- read_csv('raw_data/nba_2017_team_valuations.csv')
 player_twitter <- read_csv('raw_data/nba_2017_twitter_players.csv')
 team_name_crosswalk <- read_csv('raw_data/team_name_crosswalk.csv') #Doesn't map 100% from Short to Long
 
-
 # TODO:
-# 1. The EDA is somewhat a mess. Need to make it more into a story...
-# 2. Need to add x and y labels for each plot
-# 3. Can we get team name on the X axis for plots?
-# 4. Start social media analysis
-
+# - Need to figure out the differences between the player data sets
 
 ################################################
 # Combine / create data sets
 ################################################
 
+# dim(players_with_stats_combined)
+# dim(team_valuations)
+# dim(salary)
+# dim(salary_valuations_by_team)
+
+salary$TEAM <- str_replace(salary$TEAM, 'LA Clippers', 'Los Angeles Clippers')
 
 # Creates a dataframe with both salary and valuation by team
 salary_valuations_by_team <- salary %>% 
@@ -53,6 +54,47 @@ salary_valuations_by_team <- salary %>%
             ,high_salary = max(SALARY2)) %>% 
   inner_join(team_valuations, by = 'TEAM') %>% 
   mutate(val_salary_ratio = VALUE_MILLIONS / total_salary)
+
+# Same as the above but with extra fields
+salary_valuations_by_team2 <- left_join(salary, players_with_stats_combined, by = c('NAME' = 'PLAYER')) %>% 
+  group_by(TEAM.x) %>% 
+  summarise(total_salary = sum(SALARY2, na.rm = TRUE)
+            ,median_salary = median(SALARY2, na.rm = TRUE)
+            ,mean_salary = mean(SALARY2, na.rm = TRUE)
+            ,low_salary = min(SALARY2, na.rm = TRUE)
+            ,high_salary = max(SALARY2, na.rm = TRUE)
+            ,avg_age = median(AGE, na.rm = TRUE)
+            ,avg_FG = median(FG, na.rm = TRUE)
+            ,avg_FGA = median(FGA, na.rm = TRUE)
+            ,avg_3P = median(`3P`, na.rm = TRUE)
+            ,avg_3PA = median(`3PA`, na.rm = TRUE)
+            ,`avg_3P%` = avg_3P / avg_3PA
+            ,avg_2P = median(`2P`, na.rm = TRUE)
+            ,avg_2PA = median(`2PA`, na.rm = TRUE)
+            ,`avg_2P%` = avg_2P / avg_2PA
+            ,avg_FT = median(FT, na.rm = TRUE)
+            ,avg_FTA = median(FTA, na.rm = TRUE)
+            ,`avg_FT%` = avg_FT / avg_FTA
+            ,avg_ORB = median(ORB, na.rm = TRUE)
+            ,avg_DRB = median(DRB, na.rm = TRUE)
+            ,avg_TRB = median(TRB, na.rm = TRUE)
+            ,avg_AST = median(AST, na.rm = TRUE)
+            ,avg_STL = median(STL, na.rm = TRUE)
+            ,avg_BLK = median(BLK, na.rm = TRUE)
+            ,avg_TOV = median(TOV, na.rm = TRUE)
+            ,avg_PF = median(PF, na.rm = TRUE)
+            ,avg_POINTS = median(POINTS, na.rm = TRUE)
+            ,avg_GP = median(GP, na.rm = TRUE)
+            ,avg_MPG = median(MPG, na.rm = TRUE)
+            ,avg_ORPM = median(ORPM, na.rm = TRUE)
+            ,avg_DRPM = median(DRPM, na.rm = TRUE)
+            ,avg_RPM = median(RPM, na.rm = TRUE)
+            ,avg_WINS_RPM = median(WINS_RPM, na.rm = TRUE)
+            ,avg_PIE = median(PIE, na.rm = TRUE)
+            ,avg_PACE = median(PACE, na.rm = TRUE)
+            ,avg_W = median(W, na.rm = TRUE)) %>% 
+  right_join(team_valuations, by = c('TEAM.x' = 'TEAM')) %>% 
+  mutate(val_salary_ratio = VALUE_MILLIONS / total_salary) 
 
 # Aggregates social media statistics at a team level
 # Removes players which played for more than one team
@@ -118,10 +160,16 @@ quantile(salary$SALARY, seq(0, 1, .1))
 # Display salaries by position 
 # Removed rows that only display a position a 'F' or 'G'
 salary %>% 
-  filter(POSITION == c('C', 'PF', 'PG', 'SF', 'SG')) %>% 
+  filter(POSITION %in% c('C', 'PF', 'PG', 'SF', 'SG')) %>% 
   ggplot(aes(POSITION, SALARY)) +
   geom_boxplot() +
   labs(x = 'Salary', y = 'Posiiton')
+
+
+(avg_salary <- salary %>% 
+  filter(POSITION %in% c('C', 'PF', 'PG', 'SF', 'SG')) %>% 
+  group_by(POSITION) %>% 
+  summarise(avg_salary = median(SALARY) / 1000000))
 
 # Which were the players that were not included in the above
 # Totals 13 players
@@ -230,6 +278,18 @@ ggplot(players_with_stats_salary, aes(x = PIE, y = SALARY)) +
 cor(players_with_stats_salary$PIE, players_with_stats_salary$SALARY)
 
 
+# Plots player efficiency by position
+plotA <- ggplot() +
+  geom_boxplot(data = filter(players_with_stats_salary, POSITION.x %in% c('C', 'PF', 'PG', 'SF', 'SG'))
+               , aes(POSITION.x, PIE))
+
+# Plots median salary by position
+plotB <- ggplot() +
+  geom_point(data = avg_salary, aes(POSITION, avg_salary))
+
+grid.arrange(plotA, plotB, nrow = 1, ncol = 2)
+
+
 ####################################################
 # Question 1: Can we predict salary from performance statistics?
 ###################################################
@@ -248,7 +308,7 @@ stats_salary_data <- players_with_stats_salary %>%
   filter(SALARY <= quantile(salary$SALARY, .9))
 
 # Create variable to hold the number of predictors
-num_predictors <- dim(training_data)[2] - 1
+num_predictors <- dim(stats_salary_data)[2] - 1
 
 # Perform best-subsets 
 stats_salary_model <- regsubsets(SALARY ~ .
@@ -316,7 +376,8 @@ test_data <- add_predictions(test_data, salary_model)
 # Calculate root mean squared error
 rmse(salary_model, test_data)
 
-########### Do we need the below?
+########### Do we need the below? (Does the same thing, but keep training and 
+########### test data sets inline.)
 ##########################################################################
 # # Add columns to players
 # players_with_stats_salary <- players_with_stats_salary %>% 
@@ -327,7 +388,7 @@ rmse(salary_model, test_data)
 # salary_model1 <- lm(SALARY ~ AGE + POINTS, filter(players_with_stats_salary, training == TRUE))
 # summary(salary_model1)
 # 
-# # Why doesn't this work? ********************************************
+# # Why doesn't this work? ******************************************************************
 # # autoplot(salary_model1) 
 # 
 # # Add predictions back to data
@@ -342,11 +403,32 @@ rmse(salary_model, test_data)
 # sqrt(mean(players_with_stats_salary$actual_pred_diff_sq))
 ##########################################################################
 
-########### How could we do this using k-fold cross-validation instead of validation set?
+########### K-Fold Cross Validation
+
+stats_salary10fold <- stats_salary_data %>% 
+  crossv_kfold(10, id = 'fold') %>% 
+  mutate(train = map(train, as_tibble)) %>% 
+  mutate(model = map(train, ~ lm(SALARY ~ Rk + AGE + ORPM + W, data = .)))
+
+stats_salary10fold %>% 
+  mutate(rmse = map2_dbl(stats_salary10fold$model, stats_salary10fold$test, rmse)) %>%
+  summarise(mean_rmse = mean(rmse))
+
 
 ###########################################################
 # Question2: Can we predict team valuations from individual salaries?
 ###########################################################
+# Create variable to hold the number of predictors
+num_predictors <- dim(salary_valuations_by_team2)[2] - 1
+
+# Perform best-subsets 
+val_from_salary_model <- regsubsets(VALUE_MILLIONS ~ .
+                                 ,data = salary_valuations_by_team2
+                                 ,nvmax = num_predictors
+                                 ,method = 'forward')
+
+
+
 
 #####################################################
 # Question 3/4: Predict salary based on social media stats or vice versa
