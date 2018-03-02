@@ -31,7 +31,7 @@ player_twitter <- read_csv('raw_data/nba_2017_twitter_players.csv')
 team_name_crosswalk <- read_csv('raw_data/team_name_crosswalk.csv') #Doesn't map 100% from Short to Long
 
 # TODO:
-# - Need to figure out the differences between the player data sets
+# - Need to figure out the differences between the player data sets - are we using the correct one?
 
 ################################################
 # Combine / create data sets
@@ -94,7 +94,7 @@ salary_valuations_by_team2 <- left_join(salary, players_with_stats_combined, by 
             ,avg_PACE = median(PACE, na.rm = TRUE)
             ,avg_W = median(W, na.rm = TRUE)) %>% 
   right_join(team_valuations, by = c('TEAM.x' = 'TEAM')) %>% 
-  mutate(val_salary_ratio = VALUE_MILLIONS / total_salary) 
+  mutate(TEAM.x = factor(TEAM.x))
 
 # Aggregates social media statistics at a team level
 # Removes players which played for more than one team
@@ -418,8 +418,15 @@ stats_salary10fold %>%
 ###########################################################
 # Question2: Can we predict team valuations from individual salaries?
 ###########################################################
+
+# cor(salary_valuations_by_team2)
+
+# Remove qualitative columns and data which has a high correlation
+salary_valuations_by_team2 <- salary_valuations_by_team2 %>% 
+  select(-TEAM.x, -median_salary, -avg_FGA, -avg_3PA, -avg_2PA, -avg_FTA, -avg_TRB)
+
 # Create variable to hold the number of predictors
-num_predictors <- dim(salary_valuations_by_team2)[2] - 1
+num_predictors <- dim(salary_valuations_by_team2)[2] - 1 #************** what's wrong with this?
 
 # Perform best-subsets 
 val_from_salary_model <- regsubsets(VALUE_MILLIONS ~ .
@@ -427,7 +434,55 @@ val_from_salary_model <- regsubsets(VALUE_MILLIONS ~ .
                                  ,nvmax = num_predictors
                                  ,method = 'forward')
 
+val_from_salary_summary <- summary(val_from_salary_model)
 
+# Create tibble which contains data from results object
+val_from_salary_results <- tibble(num_pred = 1:num_predictors
+                               ,rss = val_from_salary_summary$rss
+                               ,rsquared = val_from_salary_summary$rsq
+                               ,adj_rsquared = val_from_salary_summary$adjr2
+                               ,cp = val_from_salary_summary$cp
+                               ,bic = val_from_salary_summary$bic)
+
+# RSS
+plot1 <- val_from_salary_results %>% 
+  ggplot(aes(num_pred, rss)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(val_from_salary_results$rss)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('RSS')
+
+# ADJ R-SQUARED
+plot2 <- val_from_salary_results %>% 
+  ggplot(aes(num_pred, adj_rsquared)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.max(val_from_salary_results$adj_rsquared)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('Adj R-squared')
+
+# CP
+plot3 <- val_from_salary_results %>% 
+  ggplot(aes(num_pred, cp)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(val_from_salary_results$cp)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('Cp')
+
+# BIC
+plot4 <- val_from_salary_results %>% 
+  ggplot(aes(num_pred, bic)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(val_from_salary_results$bic)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('BIC')
+
+# Each of the measures comes up with vastly different number of 
+# predictors... 
+grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
+
+stop('here')
+
+coef(stats_salary_model, 2)
 
 
 #####################################################
