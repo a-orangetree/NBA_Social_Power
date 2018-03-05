@@ -5,7 +5,7 @@ library(leaps)
 library(gridExtra)
 
 ########################################################
-# Import all files [for the moment? Not sure if we need all]
+# Import files
 ########################################################
 
 # Redundant data files
@@ -16,18 +16,19 @@ library(gridExtra)
 #elo <- read_csv('raw_data/nba_2017_elo.csv')
 #player_wikipedia <- read_csv('raw_data/nba_2017_player_wikipedia.csv') # bad data: only contains Russell Westbrook
 
-att_val_elo <- read_csv('raw_data/nba_2017_att_val_elo.csv')
-br <- read_csv('raw_data/nba_2017_br.csv')
+# PS = Performance Statistics
+att_val_elo <- read_csv('raw_data/nba_2017_att_val_elo.csv') # Attendance, valuation, and ELO
+br <- read_csv('raw_data/nba_2017_br.csv') # 486 x 30 (PS)
 endorsements <- read_csv('raw_data/nba_2017_endorsements.csv')
-players_with_salary <- read_csv('raw_data/nba_2017_nba_players_with_salary.csv')
-pie <- read_csv('raw_data/nba_2017_pie.csv') #player impoct estimation
-players_with_stats_combined <- read_csv('raw_data/nba_2017_players_stats_combined.csv')
-players_with_salary_wiki_twitter <- read_csv('raw_data/nba_2017_players_with_salary_wiki_twitter.csv')
-real_plus_minus <- read_csv('raw_data/nba_2017_real_plus_minus.csv')
-salary <- read_csv('raw_data/nba_2017_salary.csv') %>% 
-  mutate(SALARY2 = (SALARY / 1000000))
+players_with_salary <- read_csv('raw_data/nba_2017_nba_players_with_salary.csv') # 342 x 39 (PS)
+pie <- read_csv('raw_data/nba_2017_pie.csv') # Player impoct estimation
+players_with_stats_combined <- read_csv('raw_data/nba_2017_players_stats_combined.csv') # 446 x 38 (PS)
+players_with_salary_wiki_twitter <- read_csv('raw_data/nba_2017_players_with_salary_wiki_twitter.csv') # 239 x 42 (PS)
+real_plus_minus <- read_csv('raw_data/nba_2017_real_plus_minus.csv') # 468 x 8 (Subset of PS?)
+salary <- read_csv('raw_data/nba_2017_salary.csv') %>% # 449 x 5
+  mutate(SALARY2 = (SALARY / 1000000)) 
 team_valuations <- read_csv('raw_data/nba_2017_team_valuations.csv')
-player_twitter <- read_csv('raw_data/nba_2017_twitter_players.csv')
+player_twitter <- read_csv('raw_data/nba_2017_twitter_players.csv') # 329 x 3
 team_name_crosswalk <- read_csv('raw_data/team_name_crosswalk.csv') #Doesn't map 100% from Short to Long
 
 # TODO:
@@ -68,13 +69,13 @@ salary_valuations_by_team2 <- left_join(salary, players_with_stats_combined, by 
             ,avg_FGA = median(FGA, na.rm = TRUE)
             ,avg_3P = median(`3P`, na.rm = TRUE)
             ,avg_3PA = median(`3PA`, na.rm = TRUE)
-            ,`avg_3P%` = avg_3P / avg_3PA
+            #,`avg_3P%` = avg_3P / avg_3PA
             ,avg_2P = median(`2P`, na.rm = TRUE)
             ,avg_2PA = median(`2PA`, na.rm = TRUE)
-            ,`avg_2P%` = avg_2P / avg_2PA
+            #,`avg_2P%` = avg_2P / avg_2PA
             ,avg_FT = median(FT, na.rm = TRUE)
             ,avg_FTA = median(FTA, na.rm = TRUE)
-            ,`avg_FT%` = avg_FT / avg_FTA
+            #,`avg_FT%` = avg_FT / avg_FTA
             ,avg_ORB = median(ORB, na.rm = TRUE)
             ,avg_DRB = median(DRB, na.rm = TRUE)
             ,avg_TRB = median(TRB, na.rm = TRUE)
@@ -86,10 +87,10 @@ salary_valuations_by_team2 <- left_join(salary, players_with_stats_combined, by 
             ,avg_POINTS = median(POINTS, na.rm = TRUE)
             ,avg_GP = median(GP, na.rm = TRUE)
             ,avg_MPG = median(MPG, na.rm = TRUE)
-            ,avg_ORPM = median(ORPM, na.rm = TRUE)
-            ,avg_DRPM = median(DRPM, na.rm = TRUE)
-            ,avg_RPM = median(RPM, na.rm = TRUE)
-            ,avg_WINS_RPM = median(WINS_RPM, na.rm = TRUE)
+            #,avg_ORPM = median(ORPM, na.rm = TRUE)
+            #,avg_DRPM = median(DRPM, na.rm = TRUE)
+            #,avg_RPM = median(RPM, na.rm = TRUE)
+            #,avg_WINS_RPM = median(WINS_RPM, na.rm = TRUE)
             ,avg_PIE = median(PIE, na.rm = TRUE)
             ,avg_PACE = median(PACE, na.rm = TRUE)
             ,avg_W = median(W, na.rm = TRUE)) %>% 
@@ -205,17 +206,34 @@ quantile(drop_na(players_with_salary_wiki_twitter)$TWITTER_FAVORITE_COUNT, seq(0
 quantile(drop_na(players_with_salary_wiki_twitter)$TWITTER_RETWEET_COUNT, seq(0, 1, .1))
 
 # Simple plot of social media stats by team
-# Why don't the colors correspond to the label?*****************************************************
 ggplot(team_twitter_wiki) + 
   geom_point(aes(total_pageviews, TEAM, color = 'red')) +
   geom_point(aes(total_twitter_favorite, TEAM, color = 'blue')) +
   geom_point(aes(total_twitter_retweet, TEAM, color = 'black'))
 
 
+#############################################################
+# Differences why are there differences between data sets regarding 
+# the players which they contain?
+#############################################################
+
+
+dim(br)
+br_players <- length(unique(br$Player)) #486
+
+dim(players_with_salary) # Has duplicates
+players_with_salary_players <- length(unique(players_with_salary$PLAYER)) #335
+
+dim(players_with_stats_combined)
+players_with_stats_combined_players <- length(unique(players_with_stats_combined$PLAYER)) # 446
+
+dim(players_with_salary_wiki_twitter) # Has one duplicate
+players_with_salary_wiki_twitter_players <- length(unique(players_with_salary_wiki_twitter$PLAYER)) # 238
+
+
 ##########################################################
 # Why does players_with_stats_combined have 40 less observations than br?
 ##########################################################
-
 
 # dim(players_with_stats_combined)
 # dim(br)
@@ -239,7 +257,8 @@ dim(players_with_stats_combined)
 dim(salary)
 
 # Adding salary to performance data
-players_with_stats_salary <- inner_join(players_with_stats_combined, salary, by = c('PLAYER' =  'NAME'))
+players_with_stats_salary <- inner_join(players_with_stats_combined, salary
+                                        , by = c('PLAYER' =  'NAME'))
 players_with_stats_salary <- select(players_with_stats_salary, -POSITION.y, -TEAM.y, -SALARY2)
 
 players_with_stats_salary <- drop_na(players_with_stats_salary)
@@ -280,7 +299,8 @@ cor(players_with_stats_salary$PIE, players_with_stats_salary$SALARY)
 
 # Plots player efficiency by position
 plotA <- ggplot() +
-  geom_boxplot(data = filter(players_with_stats_salary, POSITION.x %in% c('C', 'PF', 'PG', 'SF', 'SG'))
+  geom_boxplot(data = filter(players_with_stats_salary
+                             , POSITION.x %in% c('C', 'PF', 'PG', 'SF', 'SG'))
                , aes(POSITION.x, PIE))
 
 # Plots median salary by position
@@ -304,7 +324,12 @@ grid.arrange(plotA, plotB, nrow = 1, ncol = 2)
 # and thus was causing an error
 # 2. Only displays observations which the salary is less than the 90th percentile
 stats_salary_data <- players_with_stats_salary %>% 
-  select(-PLAYER, -X1, -POSITION.x, -TEAM.x, -RPM) %>% 
+# Because each statistic below indicates a different model has the 
+# smallest test error, this line creates a smaller dataset for comparison  
+select(-PLAYER, -X1, -POSITION.x, -TEAM.x, -RPM, -Rk, -`FG%`, -`3P%`, -`2P%`, -`eFG%`,
+       -`FT%`, -TRB, -ORPM, -DRPM, -WINS_RPM, -PLAYER, -X1) %>%
+  # this is the original select
+  # select(-PLAYER, -X1, -POSITION.x, -TEAM.x, -RPM) %>% 
   filter(SALARY <= quantile(salary$SALARY, .9))
 
 # Create variable to hold the number of predictors
@@ -360,17 +385,16 @@ plot4 <- stats_salary_results %>%
 # Each of the measures comes up with vastly different number of 
 # predictors... 
 grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
-# Should the best model selections be so far apart for each estimate? *****************************
 
 # Selecting a model. Display coefficients
-coef(stats_salary_model, 4)
+coef(stats_salary_model, 2)
 
 # Create training and test data sets
 training_data <- stats_salary_data %>% sample_frac(.8)
 test_data <- setdiff(stats_salary_data, training_data)
 
 # Fit model using the coefficients above and add predictions to test data
-salary_model <- lm(SALARY ~ Rk + AGE + ORPM + W, data = training_data)
+salary_model <- lm(SALARY ~ AGE + MP, data = training_data)
 test_data <- add_predictions(test_data, salary_model)
 
 # Calculate root mean squared error
@@ -381,7 +405,8 @@ rmse(salary_model, test_data)
 ##########################################################################
 # # Add columns to players
 # players_with_stats_salary <- players_with_stats_salary %>% 
-#   mutate(training = sample(c(TRUE, FALSE), nrow(players_with_stats_salary), prob = c(.8, .2),rep = TRUE)
+#   mutate(training = sample(c(TRUE, FALSE)
+#         , nrow(players_with_stats_salary), prob = c(.8, .2),rep = TRUE)
 #            ,testing = !training)
 # 
 # # Create linear model
@@ -408,11 +433,13 @@ rmse(salary_model, test_data)
 stats_salary10fold <- stats_salary_data %>% 
   crossv_kfold(10, id = 'fold') %>% 
   mutate(train = map(train, as_tibble)) %>% 
-  mutate(model = map(train, ~ lm(SALARY ~ Rk + AGE + ORPM + W, data = .)))
+  mutate(model = map(train, ~ lm(SALARY ~ AGE + MP, data = .)))
 
 stats_salary10fold %>% 
   mutate(rmse = map2_dbl(stats_salary10fold$model, stats_salary10fold$test, rmse)) %>%
   summarise(mean_rmse = mean(rmse))
+
+# What other models should we try? *************************************************
 
 
 ###########################################################
@@ -426,7 +453,7 @@ salary_valuations_by_team2 <- salary_valuations_by_team2 %>%
   select(-TEAM.x, -median_salary, -avg_FGA, -avg_3PA, -avg_2PA, -avg_FTA, -avg_TRB)
 
 # Create variable to hold the number of predictors
-num_predictors <- dim(salary_valuations_by_team2)[2] - 1 #************** what's wrong with this?
+num_predictors <- dim(salary_valuations_by_team2)[2] - 1
 
 # Perform best-subsets 
 val_from_salary_model <- regsubsets(VALUE_MILLIONS ~ .
@@ -436,12 +463,13 @@ val_from_salary_model <- regsubsets(VALUE_MILLIONS ~ .
 
 val_from_salary_summary <- summary(val_from_salary_model)
 
+
 # Create tibble which contains data from results object
 val_from_salary_results <- tibble(num_pred = 1:num_predictors
                                ,rss = val_from_salary_summary$rss
                                ,rsquared = val_from_salary_summary$rsq
                                ,adj_rsquared = val_from_salary_summary$adjr2
-                               ,cp = val_from_salary_summary$cp
+                               ,cp = val_from_salary_summary$cp # Why all NaN***************
                                ,bic = val_from_salary_summary$bic)
 
 # RSS
@@ -480,8 +508,6 @@ plot4 <- val_from_salary_results %>%
 # predictors... 
 grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
 
-stop('here')
-
 coef(stats_salary_model, 2)
 
 
@@ -492,6 +518,7 @@ coef(stats_salary_model, 2)
 #####################################################
 # Question 5: Can we predict points from other performance statistics?
 #####################################################
+
 
 ####################################################
 # Appendix/Garbage/Foolin' around 
