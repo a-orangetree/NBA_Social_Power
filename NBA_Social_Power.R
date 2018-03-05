@@ -78,20 +78,20 @@ salary_valuations_by_team2 <- left_join(salary, players_with_stats_combined, by 
             #,`avg_FT%` = avg_FT / avg_FTA
             ,avg_ORB = median(ORB, na.rm = TRUE)
             ,avg_DRB = median(DRB, na.rm = TRUE)
-            ,avg_TRB = median(TRB, na.rm = TRUE)
+            #,avg_TRB = median(TRB, na.rm = TRUE)
             ,avg_AST = median(AST, na.rm = TRUE)
             ,avg_STL = median(STL, na.rm = TRUE)
             ,avg_BLK = median(BLK, na.rm = TRUE)
             ,avg_TOV = median(TOV, na.rm = TRUE)
-            ,avg_PF = median(PF, na.rm = TRUE)
-            ,avg_POINTS = median(POINTS, na.rm = TRUE)
+            #,avg_PF = median(PF, na.rm = TRUE)
+            #,avg_POINTS = median(POINTS, na.rm = TRUE)
             ,avg_GP = median(GP, na.rm = TRUE)
             ,avg_MPG = median(MPG, na.rm = TRUE)
             #,avg_ORPM = median(ORPM, na.rm = TRUE)
             #,avg_DRPM = median(DRPM, na.rm = TRUE)
             #,avg_RPM = median(RPM, na.rm = TRUE)
             #,avg_WINS_RPM = median(WINS_RPM, na.rm = TRUE)
-            ,avg_PIE = median(PIE, na.rm = TRUE)
+            #,avg_PIE = median(PIE, na.rm = TRUE)
             ,avg_PACE = median(PACE, na.rm = TRUE)
             ,avg_W = median(W, na.rm = TRUE)) %>% 
   right_join(team_valuations, by = c('TEAM.x' = 'TEAM')) %>% 
@@ -327,7 +327,7 @@ stats_salary_data <- players_with_stats_salary %>%
 # Because each statistic below indicates a different model has the 
 # smallest test error, this line creates a smaller dataset for comparison  
 select(-PLAYER, -X1, -POSITION.x, -TEAM.x, -RPM, -Rk, -`FG%`, -`3P%`, -`2P%`, -`eFG%`,
-       -`FT%`, -TRB, -ORPM, -DRPM, -WINS_RPM, -PLAYER, -X1) %>%
+       -`FT%`, -TRB, -ORPM, -DRPM, -WINS_RPM, -PLAYER, -X1, -MP) %>%
   # this is the original select
   # select(-PLAYER, -X1, -POSITION.x, -TEAM.x, -RPM) %>% 
   filter(SALARY <= quantile(salary$SALARY, .9))
@@ -387,14 +387,14 @@ plot4 <- stats_salary_results %>%
 grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
 
 # Selecting a model. Display coefficients
-coef(stats_salary_model, 2)
+coef(stats_salary_model, 6)
 
 # Create training and test data sets
 training_data <- stats_salary_data %>% sample_frac(.8)
 test_data <- setdiff(stats_salary_data, training_data)
 
 # Fit model using the coefficients above and add predictions to test data
-salary_model <- lm(SALARY ~ AGE + MP, data = training_data)
+salary_model <- lm(SALARY ~ AGE + `2P` + `2PA` + ORB + MPG + W, data = training_data)
 test_data <- add_predictions(test_data, salary_model)
 
 # Calculate root mean squared error
@@ -433,7 +433,7 @@ rmse(salary_model, test_data)
 stats_salary10fold <- stats_salary_data %>% 
   crossv_kfold(10, id = 'fold') %>% 
   mutate(train = map(train, as_tibble)) %>% 
-  mutate(model = map(train, ~ lm(SALARY ~ AGE + MP, data = .)))
+  mutate(model = map(train, ~ lm(SALARY ~ AGE + `2P` + `2PA` + ORB + MPG + W, data = .)))
 
 stats_salary10fold %>% 
   mutate(rmse = map2_dbl(stats_salary10fold$model, stats_salary10fold$test, rmse)) %>%
@@ -446,11 +446,19 @@ stats_salary10fold %>%
 # Question2: Can we predict team valuations from individual salaries?
 ###########################################################
 
+# Take predictors from salary prediction and break out valuation based on
+# each individual predictor (create individual plots). If there is no
+# pattern, we may be able to conclude that the driver of valuation is
+# is not contained in our set of predictors (i.e. in this dataset)
+
 # cor(salary_valuations_by_team2)
 
 # Remove qualitative columns and data which has a high correlation
 salary_valuations_by_team2 <- salary_valuations_by_team2 %>% 
-  select(-TEAM.x, -median_salary, -avg_FGA, -avg_3PA, -avg_2PA, -avg_FTA, -avg_TRB)
+  # original select... commented out because we may be facing the curse
+  # of dimensionality
+  select(-TEAM.x, -median_salary, -avg_FGA, -avg_3PA, -avg_2PA, -avg_FTA)
+  # select(VALUE_MILLIONS, total_salary, mean_salary, low_salary, high_salary)
 
 # Create variable to hold the number of predictors
 num_predictors <- dim(salary_valuations_by_team2)[2] - 1
@@ -463,13 +471,12 @@ val_from_salary_model <- regsubsets(VALUE_MILLIONS ~ .
 
 val_from_salary_summary <- summary(val_from_salary_model)
 
-
 # Create tibble which contains data from results object
 val_from_salary_results <- tibble(num_pred = 1:num_predictors
                                ,rss = val_from_salary_summary$rss
                                ,rsquared = val_from_salary_summary$rsq
                                ,adj_rsquared = val_from_salary_summary$adjr2
-                               ,cp = val_from_salary_summary$cp # Why all NaN***************
+                               ,cp = val_from_salary_summary$cp
                                ,bic = val_from_salary_summary$bic)
 
 # RSS
@@ -508,7 +515,7 @@ plot4 <- val_from_salary_results %>%
 # predictors... 
 grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
 
-coef(stats_salary_model, 2)
+coef(stats_salary_model, 1)
 
 
 #####################################################
@@ -518,7 +525,6 @@ coef(stats_salary_model, 2)
 #####################################################
 # Question 5: Can we predict points from other performance statistics?
 #####################################################
-
 
 ####################################################
 # Appendix/Garbage/Foolin' around 
