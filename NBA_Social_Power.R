@@ -433,10 +433,17 @@ rmse(salary_model, test_data)
 stats_salary10fold <- stats_salary_data %>% 
   crossv_kfold(10, id = 'fold') %>% 
   mutate(train = map(train, as_tibble)) %>% 
-  mutate(model = map(train, ~ lm(SALARY ~ AGE + `2P` + `2PA` + ORB + MPG + W, data = .)))
+  mutate(lm_model = map(train, ~ lm(SALARY ~ AGE + `2P` + `2PA` + ORB + MPG + W, data = .))
+         ,glm_model = map(train
+                          , ~ glm(SALARY ~ AGE + `2P` + `2PA` + ORB + MPG, data = .
+                          , family = Gamma(link = "log"))))
 
 stats_salary10fold %>% 
-  mutate(rmse = map2_dbl(stats_salary10fold$model, stats_salary10fold$test, rmse)) %>%
+  mutate(rmse = map2_dbl(stats_salary10fold$lm_model, stats_salary10fold$test, rmse)) %>%
+  summarise(mean_rmse = mean(rmse))
+
+stats_salary10fold %>% 
+  mutate(rmse = map2_dbl(stats_salary10fold$glm_model, stats_salary10fold$test, rmse)) %>%
   summarise(mean_rmse = mean(rmse))
 
 # What other models should we try? *************************************************
@@ -445,11 +452,6 @@ stats_salary10fold %>%
 ###########################################################
 # Question2: Can we predict team valuations from individual salaries?
 ###########################################################
-
-# Take predictors from salary prediction and break out valuation based on
-# each individual predictor (create individual plots). If there is no
-# pattern, we may be able to conclude that the driver of valuation is
-# is not contained in our set of predictors (i.e. in this dataset)
 
 # cor(salary_valuations_by_team2)
 
@@ -517,7 +519,30 @@ grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
 
 coef(stats_salary_model, 1)
 
+# Take predictors from salary prediction and break out valuation based on
+# each individual predictor (create individual plots). If there is no
+# pattern, we may be able to conclude that the driver of valuation is
+# is not contained in our set of predictors (i.e. in this dataset)
 
+ggplot(data = salary_valuations_by_team2, aes(x = avg_age, y = VALUE_MILLIONS)) +
+  geom_point() +
+  geom_smooth(color = 'brown')
+
+ggplot(data = salary_valuations_by_team2, aes(x = avg_2P, y = VALUE_MILLIONS)) +
+  geom_point() +
+  geom_smooth(color = 'brown')
+
+ggplot(data = salary_valuations_by_team2, aes(x = avg_ORB, y = VALUE_MILLIONS)) +
+  geom_point() +
+  geom_smooth(color = 'brown')
+
+ggplot(data = salary_valuations_by_team2, aes(x = avg_MPG, y = VALUE_MILLIONS)) +
+  geom_point() +
+  geom_smooth(color = 'brown')
+
+ggplot(data = salary_valuations_by_team2, aes(x = avg_W, y = VALUE_MILLIONS)) +
+  geom_point() +
+  geom_smooth(color = 'brown')
 #####################################################
 # Question 3/4: Predict salary based on social media stats or vice versa
 ######################################################
