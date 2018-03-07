@@ -688,55 +688,55 @@ range(players_wiki_twitter$salary)
 #####################################################
 # Question 5: Can we predict points from other performance statistics?
 #####################################################
-
-number_of_predictors_points <- dim(stats_salary_data) - 1 #***********************************
-
-bst_mod_points <- regsubsets(POINTS ~ ., data = stats_salary_data, nvmax = number_of_predictors_points)
-points_from_stats <- summary(bst_mod_points)
-
-# Create tibble which contains data from results object
-points_from_stats_results <- tibble(num_pred = 1:num_predictors
-                               ,rss = points_from_stats$rss
-                               ,rsquared = points_from_stats$rsq
-                               ,adj_rsquared = points_from_stats$adjr2
-                               ,cp = points_from_stats$cp
-                               ,bic = points_from_stats$bic)
-
-# RSS
-plot1_p1 <- points_from_stats_results %>% 
-  ggplot(aes(num_pred, rss)) + 
-  geom_point() +
-  geom_vline(aes(xintercept = which.min(points_from_stats_results$rss)), color = 'red') +
-  xlab('Number of Predictors') +
-  ylab('RSS')
-
-# ADJ R-SQUARED
-plot2_p1 <- points_from_stats_results %>% 
-  ggplot(aes(num_pred, adj_rsquared)) + 
-  geom_point() +
-  geom_vline(aes(xintercept = which.max(points_from_stats_results$adj_rsquared)), color = 'red') +
-  xlab('Number of Predictors') +
-  ylab('Adj R-squared')
-
-# CP
-plot3_p1 <- points_from_stats_results %>% 
-  ggplot(aes(num_pred, cp)) + 
-  geom_point() +
-  geom_vline(aes(xintercept = which.min(points_from_stats_results$cp)), color = 'red') +
-  xlab('Number of Predictors') +
-  ylab('Cp')
-
-# BIC
-plot4_p1 <- points_from_stats_results %>% 
-  ggplot(aes(num_pred, bic)) + 
-  geom_point() +
-  geom_vline(aes(xintercept = which.min(points_from_stats_results$bic)), color = 'red') +
-  xlab('Number of Predictors') +
-  ylab('BIC')
-
-# Each of the measures comes up with vastly different number of 
-# predictors... 
-grid.arrange(plot1_p1, plot2_p1, plot3_p1, plot4_p1, nrow = 2, ncol = 2)
+# 
+# number_of_predictors_points <- dim(stats_salary_data) - 1 #***********************************
+# 
+# bst_mod_points <- regsubsets(POINTS ~ ., data = stats_salary_data, nvmax = number_of_predictors_points)
+# points_from_stats <- summary(bst_mod_points)
+# 
+# # Create tibble which contains data from results object
+# points_from_stats_results <- tibble(num_pred = 1:num_predictors
+#                                ,rss = points_from_stats$rss
+#                                ,rsquared = points_from_stats$rsq
+#                                ,adj_rsquared = points_from_stats$adjr2
+#                                ,cp = points_from_stats$cp
+#                                ,bic = points_from_stats$bic)
+# 
+# # RSS
+# plot1_p1 <- points_from_stats_results %>% 
+#   ggplot(aes(num_pred, rss)) + 
+#   geom_point() +
+#   geom_vline(aes(xintercept = which.min(points_from_stats_results$rss)), color = 'red') +
+#   xlab('Number of Predictors') +
+#   ylab('RSS')
+# 
+# # ADJ R-SQUARED
+# plot2_p1 <- points_from_stats_results %>% 
+#   ggplot(aes(num_pred, adj_rsquared)) + 
+#   geom_point() +
+#   geom_vline(aes(xintercept = which.max(points_from_stats_results$adj_rsquared)), color = 'red') +
+#   xlab('Number of Predictors') +
+#   ylab('Adj R-squared')
+# 
+# # CP
+# plot3_p1 <- points_from_stats_results %>% 
+#   ggplot(aes(num_pred, cp)) + 
+#   geom_point() +
+#   geom_vline(aes(xintercept = which.min(points_from_stats_results$cp)), color = 'red') +
+#   xlab('Number of Predictors') +
+#   ylab('Cp')
+# 
+# # BIC
+# plot4_p1 <- points_from_stats_results %>% 
+#   ggplot(aes(num_pred, bic)) + 
+#   geom_point() +
+#   geom_vline(aes(xintercept = which.min(points_from_stats_results$bic)), color = 'red') +
+#   xlab('Number of Predictors') +
+#   ylab('BIC')
+# 
+# # Each of the measures comes up with vastly different number of 
+# # predictors... 
+# grid.arrange(plot1_p1, plot2_p1, plot3_p1, plot4_p1, nrow = 2, ncol = 2)
 
 ####################################################
 # Appendix/Garbage/Foolin' around 
