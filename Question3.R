@@ -60,6 +60,10 @@ test_set <- players_wiki_twitter %>%
 glm_train <- lm(salary ~ wiki_views, data=train_set)
 
 # Add predicted salary 
+# glm_preds <- predict(glm_train, test_set, type="response")
+# final_preds <- predict(final_mod, newdata=list(age = age_grid), se=TRUE)
+# test_set <- mutate(test_set, glm_preds = glm_preds)
+
 test_set <- add_predictions(test_set, glm_train)
 test_set <- test_set %>% 
   mutate(salary_from_wiki = pred) %>%
