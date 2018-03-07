@@ -156,3 +156,5 @@ ggplot(data = salary_valuations_by_team2, aes(x = avg_MPG, y = VALUE_MILLIONS)) 
 ggplot(data = salary_valuations_by_team2, aes(x = avg_W, y = VALUE_MILLIONS)) +
   geom_point() +
   geom_smooth(color = 'brown')
+
+# Don't go higher than 2 degrees, if that

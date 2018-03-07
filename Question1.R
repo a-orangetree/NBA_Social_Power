@@ -107,25 +107,33 @@ salary_model1 <- lm(SALARY ~ AGE + `2P` + `2PA` + ORB + MPG + W, data = training
 test_data_q1 <- add_predictions(test_data_q1, salary_model1, var = 'pred_lm')
 
 salary_model2 <- glm(SALARY ~ AGE + `2P` + `2PA` + ORB + MPG, data = training_data_q1, family = Gamma(link = "log"))
-test_data_q1 <- add_predictions(test_data_q1, salary_model2, var = 'pred_glm')
+# test_data_q1 <- add_predictions(test_data_q1, salary_model2, var = 'pred_glm', type = 'response')
 
-glimpse(test_data_q1)
+test_data_q1 <- mutate(test_data_q1, pred_glm = predict(salary_model2, test_data_q1, type = 'response'))
 
-# I have no idea what the below plots mean, but the first seems to indicate that ******************************
-# the relationship may be non-linear. The second just looks plain bad.
+# ggplot() +
+#   geom_point(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = SALARY)) +
+#   geom_point(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = pred_lm), color=
+#                "green") +
+#   geom_smooth(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = pred_lm), color=
+#                 "green")
+# 
+# ggplot() +
+#   geom_point(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = SALARY)) +
+#   geom_point(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = pred_glm)
+#              , color = "blue") +
+#   geom_smooth(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = pred_glm)
+#               , color = "blue")
+
+# Actual vs Predicted for linear model
 ggplot() +
-  geom_point(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = SALARY)) +
-  geom_point(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = pred_lm), color=
-               "green") +
-  geom_smooth(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = pred_lm), color=
-                "green")
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm))
 
+# Actual vs Predicted for Gamma model
 ggplot() +
-  geom_point(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = SALARY)) +
-  geom_point(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = pred_glm)
-             , color = "blue") +
-  geom_smooth(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = pred_glm)
-              , color = "blue")
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_glm)) +
+    geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_glm))
 
 # Calculate root mean squared error
 rmse(salary_model1, test_data_q1)

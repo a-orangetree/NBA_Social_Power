@@ -20,6 +20,7 @@ team_valuations <- read_csv('raw_data/nba_2017_team_valuations.csv')
 player_twitter <- read_csv('raw_data/nba_2017_twitter_players.csv') # 329 x 3
 team_name_crosswalk <- read_csv('raw_data/team_name_crosswalk.csv') #Doesn't map 100% from Short to Long
 
+glimpse(players_with_salary)
 
 # ################################################
 # # Combine / create data sets
