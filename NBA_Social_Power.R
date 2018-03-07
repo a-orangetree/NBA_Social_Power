@@ -31,8 +31,6 @@ team_valuations <- read_csv('raw_data/nba_2017_team_valuations.csv')
 player_twitter <- read_csv('raw_data/nba_2017_twitter_players.csv') # 329 x 3
 team_name_crosswalk <- read_csv('raw_data/team_name_crosswalk.csv') #Doesn't map 100% from Short to Long
 
-# TODO:
-# - Need to figure out the differences between the player data sets - are we using the correct one?
 
 ################################################
 # Combine / create data sets
@@ -330,7 +328,7 @@ select(-PLAYER, -X1, -POSITION.x, -TEAM.x, -RPM, -Rk, -`FG%`, -`3P%`, -`2P%`, -`
        -`FT%`, -TRB, -ORPM, -DRPM, -WINS_RPM, -PLAYER, -X1, -MP) %>%
   # this is the original select
   # select(-PLAYER, -X1, -POSITION.x, -TEAM.x, -RPM) %>% 
-  filter(SALARY <= quantile(salary$SALARY, .9))
+  filter(SALARY <= quantile(salary$SALARY, .95))
 
 # Create variable to hold the number of predictors
 num_predictors <- dim(stats_salary_data)[2] - 1
@@ -351,7 +349,7 @@ stats_salary_results <- tibble(num_pred = 1:num_predictors
                               ,bic = stats_salary_summary$bic)
 
 # RSS
-plot1 <- stats_salary_results %>% 
+plot1_q1 <- stats_salary_results %>% 
   ggplot(aes(num_pred, rss)) + 
   geom_point() +
   geom_vline(aes(xintercept = which.min(stats_salary_results$rss)), color = 'red') +
@@ -359,7 +357,7 @@ plot1 <- stats_salary_results %>%
   ylab('RSS')
 
 # ADJ R-SQUARED
-plot2 <- stats_salary_results %>% 
+plot2_q1 <- stats_salary_results %>% 
   ggplot(aes(num_pred, adj_rsquared)) + 
   geom_point() +
   geom_vline(aes(xintercept = which.max(stats_salary_results$adj_rsquared)), color = 'red') +
@@ -367,7 +365,7 @@ plot2 <- stats_salary_results %>%
   ylab('Adj R-squared')
 
 # CP
-plot3 <- stats_salary_results %>% 
+plot3_q1 <- stats_salary_results %>% 
   ggplot(aes(num_pred, cp)) + 
   geom_point() +
   geom_vline(aes(xintercept = which.min(stats_salary_results$cp)), color = 'red') +
@@ -375,7 +373,7 @@ plot3 <- stats_salary_results %>%
   ylab('Cp')
 
 # BIC
-plot4 <- stats_salary_results %>% 
+plot4_q1 <- stats_salary_results %>% 
   ggplot(aes(num_pred, bic)) + 
   geom_point() +
   geom_vline(aes(xintercept = which.min(stats_salary_results$bic)), color = 'red') +
@@ -384,21 +382,42 @@ plot4 <- stats_salary_results %>%
 
 # Each of the measures comes up with vastly different number of 
 # predictors... 
-grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
+grid.arrange(plot1_q1, plot2_q1, plot3_q1, plot4_q1, nrow = 2, ncol = 2)
 
 # Selecting a model. Display coefficients
 coef(stats_salary_model, 6)
 
 # Create training and test data sets
-training_data <- stats_salary_data %>% sample_frac(.8)
-test_data <- setdiff(stats_salary_data, training_data)
+training_data_q1 <- stats_salary_data %>% sample_frac(.8)
+test_data_q1 <- setdiff(stats_salary_data, training_data_q1)
 
 # Fit model using the coefficients above and add predictions to test data
-salary_model <- lm(SALARY ~ AGE + `2P` + `2PA` + ORB + MPG + W, data = training_data)
-test_data <- add_predictions(test_data, salary_model)
+salary_model1 <- lm(SALARY ~ AGE + `2P` + `2PA` + ORB + MPG + W, data = training_data_q1)
+test_data_q1 <- add_predictions(test_data_q1, salary_model1, var = 'pred_lm')
+
+salary_model2 <- glm(SALARY ~ AGE + `2P` + `2PA` + ORB + MPG, data = training_data_q1, family = Gamma(link = "log"))
+test_data_q1 <- add_predictions(test_data_q1, salary_model2, var = 'pred_glm')
+
+glimpse(test_data_q1)
+
+# I have no idea what the below plots mean, but the first seems to indicate that ******************************
+# the relationship may be non-linear. The second just looks plain bad.
+ggplot() +
+  geom_point(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = SALARY)) +
+  geom_point(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = pred_lm), color=
+               "green") +
+  geom_smooth(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = pred_lm), color=
+                "green")
+
+ggplot() +
+  geom_point(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = SALARY)) +
+  geom_point(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = pred_glm)
+             , color = "blue") +
+  geom_smooth(data = test_data_q1, aes(x = seq(1:dim(test_data_q1)[1]), y = pred_glm)
+              , color = "blue")
 
 # Calculate root mean squared error
-rmse(salary_model, test_data)
+rmse(salary_model, test_data_q1)
 
 # Exploring plots of residuals / fitted / leverage / Q-Q 
 
@@ -447,8 +466,6 @@ stats_salary10fold %>%
 stats_salary10fold %>% 
   mutate(rmse = map2_dbl(stats_salary10fold$glm_model, stats_salary10fold$test, rmse)) %>%
   summarise(mean_rmse = mean(rmse))
-
-# What other models should we try? *************************************************
 
 
 ###########################################################
@@ -671,6 +688,55 @@ range(players_wiki_twitter$salary)
 #####################################################
 # Question 5: Can we predict points from other performance statistics?
 #####################################################
+
+number_of_predictors_points <- dim(stats_salary_data) - 1 #***********************************
+
+bst_mod_points <- regsubsets(POINTS ~ ., data = stats_salary_data, nvmax = number_of_predictors_points)
+points_from_stats <- summary(bst_mod_points)
+
+# Create tibble which contains data from results object
+points_from_stats_results <- tibble(num_pred = 1:num_predictors
+                               ,rss = points_from_stats$rss
+                               ,rsquared = points_from_stats$rsq
+                               ,adj_rsquared = points_from_stats$adjr2
+                               ,cp = points_from_stats$cp
+                               ,bic = points_from_stats$bic)
+
+# RSS
+plot1_p1 <- points_from_stats_results %>% 
+  ggplot(aes(num_pred, rss)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(points_from_stats_results$rss)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('RSS')
+
+# ADJ R-SQUARED
+plot2_p1 <- points_from_stats_results %>% 
+  ggplot(aes(num_pred, adj_rsquared)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.max(points_from_stats_results$adj_rsquared)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('Adj R-squared')
+
+# CP
+plot3_p1 <- points_from_stats_results %>% 
+  ggplot(aes(num_pred, cp)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(points_from_stats_results$cp)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('Cp')
+
+# BIC
+plot4_p1 <- points_from_stats_results %>% 
+  ggplot(aes(num_pred, bic)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(points_from_stats_results$bic)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('BIC')
+
+# Each of the measures comes up with vastly different number of 
+# predictors... 
+grid.arrange(plot1_p1, plot2_p1, plot3_p1, plot4_p1, nrow = 2, ncol = 2)
 
 ####################################################
 # Appendix/Garbage/Foolin' around 
