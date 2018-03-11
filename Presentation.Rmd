@@ -1,0 +1,28 @@
+---
+title: "Final Project Presentation"
+author: "Julia Wilkins & Adrian Naranjo"
+---
+
+<br>
+
+# Data
+
+Found on Kaggle: https://www.kaggle.com/noahgift/social-power-nba
+
+Contains combined performance data for players in the 2016-2017 season, and salary, Twitter engagement, and Wikipedia traffic data. 
+
+<br>
+
+# Can we predict...
+
+1. Salary from performance statistics?
+2. Team valuations from individual salaries?
+3. Salary based on social media stats or vice versa?
+4. Points from other performance statistics?
+
+<br>
+
+```{r, message=FALSE}
+
+```
+<br>
