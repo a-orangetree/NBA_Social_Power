@@ -72,7 +72,12 @@ salary %>%
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
 # Find a quantiles
-quantile(salary$SALARY, seq(0, 1, .1)) %>%
+quantiles <- quantile(salary$SALARY, seq(0, 1, .1)) 
+
+quantiles <- tibble(Percentile = names(quantiles)
+       ,Salary = quantiles)
+
+quantiles %>% 
   kable("html") %>%
   kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
 ```
@@ -100,10 +105,11 @@ salary %>%
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
 # Calculate average salary/position
-(avg_salary <- salary %>% 
-    filter(POSITION %in% c('C', 'PF', 'PG', 'SF', 'SG')) %>% 
-    group_by(POSITION) %>% 
-    summarise(avg_salary = median(SALARY) / 1000000)) %>% 
+salary %>% 
+    rename(Position = POSITION) %>% 
+    filter(Position %in% c('C', 'PF', 'PG', 'SF', 'SG')) %>% 
+    group_by(Position) %>% 
+    summarise(Avg_Salary = round(median(SALARY) / 1000000, digits = 2)) %>%
     kable("html") %>%
     kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
 ```
@@ -292,7 +298,7 @@ text_tbl <- data.frame(
 )
 
 kable(text_tbl, "html") %>%
-  kable_styling(full_width = F) %>%
+  kable_styling(full_width = F, position = "left") %>%
   column_spec(1, bold = T, border_right = T) %>%
   column_spec(2, width = "30em")
 ```
@@ -445,8 +451,8 @@ kable_styling(position = "left")
 <br>
 <br>
 
-## Are we better suited than by a non-linear model?
-### Ploting prominent variables against SALARY
+## Are we better suited with a non-linear model?
+### Ploting prominent variables against salary
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
 plot_nonlinear1 <- ggplot() +
@@ -767,6 +773,46 @@ rmse_tib %>%
  <br>
  <br>
  
+## Valuations by Team
+### As expected, teams in bigger, more popular cities are generally are worth more
+ 
+```{r, message=FALSE, echo=FALSE, warning=FALSE} 
+ggplot(team_valuations, aes(x = VALUE_MILLIONS
+                            ,y = TEAM
+                            ,size = VALUE_MILLIONS
+                            ,color = VALUE_MILLIONS)) +
+geom_point() +
+labs(x = 'Team Value', y = 'Team Name')
+```
+<br>
+<br>
+
+## Valuation by Attendance
+### There looks to be some relationship between Attendance and Valuation
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE} 
+# Shows attendance and team value are correlated
+ggplot(att_val_elo, aes(x = VALUE_MILLIONS
+                        ,y = AVG
+                        ,size = VALUE_MILLIONS
+                        ,color = VALUE_MILLIONS)) + 
+  geom_smooth(color = 'brown') +
+  geom_point() +
+  labs(y = 'Attendance', x = 'Team Value')
+```
+<br>
+<br>
+
+### To be exact...
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE} 
+tibble(Correlation = cor(att_val_elo$VALUE_MILLIONS, att_val_elo$AVG)) %>% 
+  kable("html") %>% 
+  kable_styling(full_width = F, position = "left")
+```
+<br>
+<br>
+
 ## Quickly: remove highly correlated predictors, perform forward elmination...
  
 ```{r, message=FALSE, echo=FALSE, warning=FALSE} 
@@ -876,6 +922,6 @@ plot4 <- val_from_salary_results %>%
 grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
 ```
 
-### $%*&. Looks weird. Moving on.
+### $%*&! Looks weird. Moving on.
 <br>
 <br>
