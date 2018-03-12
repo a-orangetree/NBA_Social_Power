@@ -153,7 +153,23 @@ ggplot(team_twitter_wiki) +
   geom_point(aes(total_twitter_favorite, TEAM, color = 'blue')) +
   geom_point(aes(total_twitter_retweet, TEAM, color = 'black'))
 
+team_social_media <- ggplot(team_twitter_wiki) + 
+  geom_point(aes(total_pageviews, TEAM), color = 'red') +
+  geom_point(aes(total_twitter_favorite, TEAM), color = 'blue') +
+  geom_point(aes(total_twitter_retweet, TEAM), color = 'black') +
+  labs(x = 'Social Media Statistics', y = 'Team') + 
+  ggtitle("Social Media Stats per Team")
 
+team_social_media
+cols <- c(total_pageviews = "red", total_twitter_favorite = "blue", total_twitter_retweet = "black")
+
+team_social_media + scale_colour_manual(
+  values = c("red", "blue", "black")
+  # breaks = c(total_pageviews, total_twitter_favorite, total_twitter_retweet),
+  # labels = c("Pageviews", "Twitter Favorites", "Twitter Retweets")
+)
+# team_social_media <- team_social_media + scale_color_discrete(name="Stat", breaks=c("Black, Blue, Red", labels=c("Twitter Retweets", "Twitter Favorites", "Wikipedia Pageviews" )))
+team_social_media
 #############################################################
 # Differences why are there differences between data sets regarding 
 # the players which they contain?
