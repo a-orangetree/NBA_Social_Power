@@ -1,53 +1,46 @@
 ---
-title: "Final Project Presentation"
+title: "Social Power NBA Dataset"
 author: "Julia Wilkins & Adrian Naranjo"
 ---
 
 <br>
 
-# Data
+## Data
 
-* Social Power NBA Dataset
 * Found on Kaggle: https://www.kaggle.com/noahgift/social-power-nba
 * Contains combined performance data for players in the 2016-2017 season, and salary, Twitter engagement, and Wikipedia traffic data. 
 
 <br>
 
-# Can we predict...
+## We asked, can we predict...
 
 1. Salary from performance statistics?
 2. Team valuations from individual salaries?
 3. Salary based on social media stats or vice versa?
-4. Points from other performance statistics?
 
 <br>
 
-# Exploratory Data Analysis
-
-```{r, message=FALSE}
-# Load Packages
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
 library(tidyverse)
 library(modelr)
 library(boot)
 library(leaps)
 library(gridExtra)
 library(gam)
+library(knitr)
+library(kableExtra)
 ```
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
-# load some data for EDA
 
-team_valuations <- read_csv('raw_data/nba_2017_team_valuations.csv') # Team vs. valuations
-
-att_val_elo <- read_csv('raw_data/nba_2017_att_val_elo.csv') # Attendance, valuation, and ELO
-
-salary <- read_csv('raw_data/nba_2017_salary.csv') %>% # 449 x 5
+# Load Data
+team_valuations <- read_csv('raw_data/nba_2017_team_valuations.csv')
+att_val_elo <- read_csv('raw_data/nba_2017_att_val_elo.csv')
+salary <- read_csv('raw_data/nba_2017_salary.csv') %>%
   mutate(SALARY2 = (SALARY / 1000000)) 
+players_with_stats_combined <- read_csv('raw_data/nba_2017_players_stats_combined.csv')
+players_with_salary_wiki_twitter <- read_csv('raw_data/nba_2017_players_with_salary_wiki_twitter.csv')
 
-
-players_with_stats_combined <- read_csv('raw_data/nba_2017_players_stats_combined.csv') # 446 x 38 (PS)
-
-players_with_salary_wiki_twitter <- read_csv('raw_data/nba_2017_players_with_salary_wiki_twitter.csv') # 239 x 42 (PS)
 # Aggregates social media statistics at a team level
 # Removes players which played for more than one team
 team_twitter_wiki <- drop_na(players_with_salary_wiki_twitter) %>%
@@ -56,88 +49,74 @@ team_twitter_wiki <- drop_na(players_with_salary_wiki_twitter) %>%
             ,total_twitter_favorite = sum(TWITTER_FAVORITE_COUNT)
             ,total_twitter_retweet = sum(TWITTER_RETWEET_COUNT)) %>%
   filter(!str_detect(TEAM, '/'))
-
-
-
 ```
 
-<br>
-
-### Exploring Team Data
-
-<br>
-
-```{r, message=FALSE, echo=FALSE}
-# Simply visualizing the range of team values (combined salary)
-# Maybe take this one out?
-ggplot(team_valuations, aes(x = VALUE_MILLIONS
-                            ,y = TEAM
-                            ,size = VALUE_MILLIONS
-                            ,color = VALUE_MILLIONS)) +
-  geom_point() +
-  labs(x = 'Team Value', y = 'Team Name') +
-  ggtitle("Exploring Team Value")
-
-# Shows attendance and team value are correlated
-ggplot(att_val_elo, aes(x = VALUE_MILLIONS
-                        ,y = AVG
-                        ,size = VALUE_MILLIONS
-                        ,color = VALUE_MILLIONS)) + 
-  geom_smooth(color = 'brown') +
-  geom_point() +
-  labs(y = 'Attendance', x = 'Team Value') + 
-  ggtitle("Team Value vs. Attendance ")
-```
-
-<br>
-
-### Exploring Individual and Salary Data
-
-<br>
+## Distribution of Individual Salaries
+### Right Skewed: Keep this in mind. We'll cut the tail later.
 
 ```{r, message=FALSE, echo=FALSE}
 # Display histogram of salaries... not surprisingly, right skewed
 salary %>% 
   ggplot(aes(SALARY2, labels = TRUE)) +
-  geom_histogram(binwidth = 2.5) +
-  stat_bin(geom="text", aes(label=..count..), binwidth = 2.5) +
-  labs(x = 'Salary in Millions', y = 'Number of Players') + 
-  ggtitle("Individual Salary Distribution")
+  geom_histogram(binwidth = 2.5, color = "black", fill = "white") +
+  stat_bin(geom="text", aes(label = ..count..), binwidth = 2.5, position=position_stack(vjust=0.5)) +
+  labs(x = 'Salary (Millions)', y = 'Number of Players')
 ```
-<br>
-Quartiles of individual salaries:
-```{r, message=FALSE}
-# Find a quantiles
-quantile(salary$SALARY, seq(0, 1, .1))
-```
-<br>
-```{r, message=FALSE, echo=FALSE}
 
+#### Note: bins are $2.5 mil
+
+<br>
+<br>
+
+### So, where do we want to cut? ...Somewhere between $10 - $15 mil looks good.
+
+```{r, message=FALSE, echo=FALSE}
+# Find a quantiles
+quantile(salary$SALARY, seq(0, 1, .1)) %>%
+  kable("html") %>%
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+<br>
+<br>
+
+## Salary by Position
+### If you're going to play, try playing center. Otherwise, nothing too interesting.
+
+```{r, message=FALSE, echo=FALSE}
 # Display salaries by position 
 # Removed rows that only display a position a 'F' or 'G'
 salary %>% 
   filter(POSITION %in% c('C', 'PF', 'PG', 'SF', 'SG')) %>% 
   ggplot(aes(POSITION, SALARY)) +
   geom_boxplot() +
-  labs(x = 'Salary', y = 'Posiiton') + 
-  ggtitle("Salary By Position")
+  labs(x = 'Salary', y = 'Position')
+  # ggtitle("Salary By Position")
 ```
 <br>
-Average salary by position:
+<br>
+
+## Median Salary by Position
+### In case you're unsure center is the position for you (hint: it is)
+
 ```{r, message=FALSE, echo=FALSE}
 # Calculate average salary/position
 (avg_salary <- salary %>% 
     filter(POSITION %in% c('C', 'PF', 'PG', 'SF', 'SG')) %>% 
     group_by(POSITION) %>% 
-    summarise(avg_salary = median(SALARY) / 1000000))
+    summarise(avg_salary = median(SALARY) / 1000000)) %>% 
+    kable("html") %>%
+    kable_styling(bootstrap_options = "striped", full_width = F)
+```
+<br>
+<br>
 
+## Salary by Age?
+### Increases until leveling off and [slightly] declining. Makes sense: better players keep playing.
 
-
+```{r, message=FALSE, echo=FALSE}
 # Exploring salary vs. age
-players_with_stats_salary <- inner_join(players_with_stats_combined, salary
-                                        , by = c('PLAYER' =  'NAME'))
+players_with_stats_salary <- inner_join(players_with_stats_combined, salary, by = c('PLAYER' =  'NAME'))
 players_with_stats_salary <- select(players_with_stats_salary, -POSITION.y, -TEAM.y, -SALARY2)
-
 players_with_stats_salary <- drop_na(players_with_stats_salary)
 
 # Correlation between Age and Salary. Took out outliers.
@@ -145,37 +124,259 @@ players_with_stats_salary %>%
   filter(AGE >= 20, AGE <= 35) %>% 
   ggplot(aes(x = AGE, y = SALARY)) +
   geom_point() +
-  geom_smooth() + ggtitle("Age vs. Individual Salary")
-
+  geom_smooth() 
+ # ggtitle("Age vs. Individual Salary")
 ```
-<br><br>
+<br>
+<br>
+
+## Player Rating by Salary
+### Obvious conclusion: the better you are, the better you get paid (generally!)
+
 ```{r, message=FALSE, echo=FALSE}
 # Correlation between between Player Effectiveness and Salary
 ggplot(players_with_stats_salary, aes(x = PIE, y = SALARY)) +
   geom_point() +
-  geom_smooth() + 
-  ggtitle("Player Effectiveness vs. Salary")
-
+  geom_smooth() 
+  # ggtitle("Player Effectiveness vs. Salary")
 ```
 
 <br>
-
-### Social Media Stats by Team
+<br>
 ```{r, message=FALSE, echo=FALSE}
-team_social_media <- ggplot(team_twitter_wiki) + 
-  geom_point(aes(total_pageviews, TEAM), color = 'red') +
-  geom_point(aes(total_twitter_favorite, TEAM), color = 'blue') +
-  geom_point(aes(total_twitter_retweet, TEAM), color = 'black') +
-  labs(x = 'Social Media Statistics', y = 'Team') + 
-  ggtitle("Social Media Stats per Team\n\n Red = WikiPageviews, Black = Twitter Retweets, Blue = Twitter Favorites")
-
-team_social_media
+# ggplot(team_twitter_wiki) + 
+#   geom_point(aes(total_pageviews, TEAM), color = 'red') +
+#   geom_point(aes(total_twitter_favorite, TEAM), color = 'blue') +
+#   geom_point(aes(total_twitter_retweet, TEAM), color = 'black') +
+#   labs(x = 'Social Media Statistics', y = 'Team')
+  # ggtitle("Social Media Stats per Team\n\n Red = WikiPageviews, Black = Twitter Retweets, Blue = Twitter Favorites")
 ```
 
 
+# Question: Can we predict salary from performance statistics? 
+ <br>
+ <br>
+ 
+```{r, message=FALSE, echo=FALSE}
+# Create new dataset
+players_with_stats_salary <- inner_join(players_with_stats_combined, salary, by = c('PLAYER' =  'NAME'))
+players_with_stats_salary <- select(players_with_stats_salary, -POSITION.y, -TEAM.y, -SALARY2)
+players_with_stats_salary <- drop_na(players_with_stats_salary)
+```
+
+## First, which predictors do we want?
+
+```{r, message=FALSE, echo=FALSE}
+names(players_with_stats_salary)
+
+stats_salary_data <- players_with_stats_salary %>% 
+  # Because each statistic below indicates a different model has the 
+  # smallest test error, this line creates a smaller dataset for comparison  
+  select(-PLAYER, -X1, -POSITION.x, -TEAM.x, -RPM, -Rk, -`FG%`, -`3P%`, -`2P%`, -`eFG%`,
+         -`FT%`, -TRB, -ORPM, -DRPM, -WINS_RPM, -PLAYER, -X1, -MP) %>%
+  # this is the original select
+  # select(-PLAYER, -X1, -POSITION.x, -TEAM.x, -RPM) %>% 
+  filter(SALARY <= quantile(salary$SALARY, .95))
+```
+<br> 
+
+## Including all predictors lead to issues (hello, collinearity). So, we got rid of some (e.g. Offensive Rebounds) and kept others (e.g. Total Rebounds).
+
+#### Note: to be precise: we eliminated 18 of the 40 variables)
+
 <br>
 <br>
 
-# Main focus question: Can we predict salary from performance statistics? 
+## But, we'd still prefer less variables: Best Subset Elimination
+### No clear consensus. (Gee, thanks...)
 
+```{r, message=FALSE, echo=FALSE}
+# Create variable to hold the number of predictors
+num_predictors <- dim(stats_salary_data)[2] - 1
+
+# Perform best-subsets 
+stats_salary_model <- regsubsets(SALARY ~ .
+                                 ,data = stats_salary_data
+                                 ,nvmax = num_predictors)
+
+stats_salary_summary <- summary(stats_salary_model)
+
+# Create tibble which contains data from results object
+stats_salary_results <- tibble(num_pred = 1:num_predictors
+                               ,rss = stats_salary_summary$rss
+                               ,rsquared = stats_salary_summary$rsq
+                               ,adj_rsquared = stats_salary_summary$adjr2
+                               ,cp = stats_salary_summary$cp
+                               ,bic = stats_salary_summary$bic)
+
+
+# RSS
+plot1_q1 <- stats_salary_results %>% 
+  ggplot(aes(num_pred, rss)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(stats_salary_results$rss)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('RSS')
+
+# ADJ R-SQUARED
+plot2_q1 <- stats_salary_results %>% 
+  ggplot(aes(num_pred, adj_rsquared)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.max(stats_salary_results$adj_rsquared)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('Adj R-squared')
+
+# CP
+plot3_q1 <- stats_salary_results %>% 
+  ggplot(aes(num_pred, cp)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(stats_salary_results$cp)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('Cp')
+
+# BIC
+plot4_q1 <- stats_salary_results %>% 
+  ggplot(aes(num_pred, bic)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(stats_salary_results$bic)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('BIC')
+
+# Each of the measures comes up with vastly different number of 
+# predictors... 
+grid.arrange(plot1_q1, plot2_q1, plot3_q1, plot4_q1, nrow = 2, ncol = 2)
+```
+<br>
+<br>
+<br>
+
+## Ok. Let's build a bunch of models (Yay!)
+
+```{r, message=FALSE, echo=FALSE}
+# Create training and test data sets
+training_data_q1 <- stats_salary_data %>% sample_frac(.8)
+test_data_q1 <- setdiff(stats_salary_data, training_data_q1)
+
+# Fit model using the coefficients above and add predictions to test data
+salary_model4 <- lm(SALARY ~ AGE + `2PA` + MPG + W, data = training_data_q1)
+salary_model5 <- lm(SALARY ~ AGE + `2P` + `2PA` + MPG + W, data = training_data_q1)
+salary_model6 <- lm(SALARY ~ AGE + `2P` + `2PA` + ORB + POINTS + W, data = training_data_q1)
+salary_model7 <- lm(SALARY ~ AGE + `2P` + `2PA` + ORB + POINTS + W + TOV, data = training_data_q1)
+salary_model8 <- lm(SALARY ~ AGE + `2P` + `2PA` + ORB + POINTS + W + TOV + STL, data = training_data_q1)
+salary_model9 <- lm(SALARY ~ AGE + FGA + `2P` + `3PA` + ORB + POINTS + W + TOV + MPG, data = training_data_q1)
+salary_model10 <- lm(SALARY ~ AGE + FGA + `3PA` + `2P` + `2PA` + ORB + TOV + POINTS + MPG + W, data = training_data_q1)
+
+test_data_q1 <- add_predictions(test_data_q1, salary_model4, var = 'pred_lm4')
+test_data_q1 <- add_predictions(test_data_q1, salary_model5, var = 'pred_lm5')
+test_data_q1 <- add_predictions(test_data_q1, salary_model6, var = 'pred_lm6')
+test_data_q1 <- add_predictions(test_data_q1, salary_model7, var = 'pred_lm7')
+test_data_q1 <- add_predictions(test_data_q1, salary_model8, var = 'pred_lm8')
+test_data_q1 <- add_predictions(test_data_q1, salary_model9, var = 'pred_lm9')
+test_data_q1 <- add_predictions(test_data_q1, salary_model10, var = 'pred_lm10')
+
+salary_model_gamma <- glm(SALARY ~ AGE + `2P` + `2PA` + ORB + MPG, data = training_data_q1, family = Gamma(link = "log"))
+test_data_q1 <- mutate(test_data_q1, pred_glm = predict(salary_model_gamma, test_data_q1, type = 'response'))
+
+text_tbl <- data.frame(
+  NumberOfPredictors = c("4", "5", "6", "7", "8", "9", "10", "5 (Gamma)"),
+  Predictors = c(
+    "Age, 2PA, MPG, W",
+    "Age, 2PA, MPG, W, 2P", 
+    "Age, 2PA, W, 2P, ORB, POINTS",
+    "Age, 2PA, W, 2P, ORB, POINTS, TOV",
+    "Age, 2PA, W, 2P, ORB, POINTS, TOV, STL",
+    "Age, W, 2P, ORB, POINTS, TOV, MPG, 3PA, FGA",
+    "Age, W, 2P, ORB, POINTS, TOV, MPG, 3PA, FGA, 2PA",
+    "Age, 2PA, 2P, 2PA, ORB, MPG"
+  )
+)
+
+kable(text_tbl, "html") %>%
+  kable_styling(full_width = F) %>%
+  column_spec(1, bold = T, border_right = T) %>%
+  column_spec(2, width = "30em")
+```
+<br>
+<br>
+
+## Actual versus Predicted Plots
+### Not much of a difference, at least visually
+
+```{r, message=FALSE, echo=FALSE}
+# Actual vs Predicted for linear model
+plot_lm4 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm4)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm4), method = 'lm') +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("4 Predictors") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_lm5 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm5)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm5), method = 'lm') +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("5 Predictors") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_lm6 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm6)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm6), method = 'lm') +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("6 Predictors") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_lm7 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm7)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm7), method = 'lm') +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("7 Predictors") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_lm8 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm8)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm8), method = 'lm') +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("8 Predictors") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_lm9 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm9)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm9), method = 'lm') +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("9 Predictors") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_lm10 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm10)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm10), method = 'lm') +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("10 Predictors") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_glm <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_glm)) +
+    geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_glm), method = 'lm', color = "red") +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("5 (Gamma)") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+grid.arrange(plot_lm4, plot_lm5, plot_lm6, plot_lm7, plot_lm8, plot_lm9, plot_lm10, plot_glm, nrow = 4, ncol = 2)
+```
+<br>
+<br>
+
+## Let's be more exact: what's the Test MSE
+
+```{r, message=FALSE, echo=FALSE}
+rmse(salary_model4, test_data_q1)
+rmse(salary_model5, test_data_q1)
+rmse(salary_model6, test_data_q1)
+rmse(salary_model7, test_data_q1)
+rmse(salary_model8, test_data_q1)
+rmse(salary_model9, test_data_q1)
+rmse(salary_model10, test_data_q1)
+rmse(salary_model_gamma, test_data_q1)
+```
+
+<br>
 <br>
