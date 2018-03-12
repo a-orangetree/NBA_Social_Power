@@ -116,7 +116,7 @@ salary %>%
 <br>
 <br>
 
-## Salary by Age?
+## Salary by Age
 ### Increases until leveling off and [slightly] declining. Makes sense: better players keep playing.
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
@@ -186,15 +186,15 @@ stats_salary_data <- players_with_stats_salary %>%
 ```
 <br> 
 
-## Including all predictors lead to issues (hello, collinearity). So, we got rid of some (e.g. Offensive Rebounds) and kept others (e.g. Total Rebounds).
+## Including all predictors led to issues (hello, collinearity). So, we got rid of some (e.g. Offensive Rebounds) and kept others (e.g. Total Rebounds).
 
-#### Note: to be precise: we eliminated 18 of the 40 variables)
+#### Note: to be precise: we eliminated 18 of the 40 variables
 
 <br>
 <br>
 
 ## But, we'd still prefer less variables: Best Subset Elimination
-### No clear consensus. (Gee, thanks...)
+### No clear consensus.
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
 # Create variable to hold the number of predictors
@@ -372,6 +372,7 @@ grid.arrange(plot_lm4, plot_lm5, plot_lm6, plot_lm7, plot_lm8, plot_lm9, plot_lm
 <br>
 
 ## Let's be more exact: what's the Test MSE
+### Keep in mind, salaries are in the millions!
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
 tibble(Model4 = rmse(salary_model4, test_data_q1)
@@ -452,32 +453,32 @@ kable_styling(position = "left")
 <br>
 
 ## Are we better suited with a non-linear model?
-### Ploting prominent variables against salary
+### Do any patterns appear while ploting prominent variables against salary
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
 plot_nonlinear1 <- ggplot() +
-  geom_point(data = stats_salary_data, aes(x = AGE, y = SALARY)) +
-  geom_smooth(data = stats_salary_data, aes(x = AGE, y = SALARY), method = 'lm')
+  geom_point(data = stats_salary_data, aes(x = AGE, y = SALARY))
+  # geom_smooth(data = stats_salary_data, aes(x = AGE, y = SALARY), method = 'lm')
 
 plot_nonlinear2 <- ggplot() +
-  geom_point(data = stats_salary_data, aes(x = `2P`, y = SALARY)) +
-  geom_smooth(data = stats_salary_data, aes(x = `2P`, y = SALARY), method = 'lm')
+  geom_point(data = stats_salary_data, aes(x = `2P`, y = SALARY))
+  # geom_smooth(data = stats_salary_data, aes(x = `2P`, y = SALARY), method = 'lm')
 
 plot_nonlinear3 <- ggplot() +
-  geom_point(data = stats_salary_data, aes(x = `2PA`, y = SALARY)) +
-  geom_smooth(data = stats_salary_data, aes(x = `2PA`, y = SALARY), method = 'lm')
+  geom_point(data = stats_salary_data, aes(x = `2PA`, y = SALARY))
+  # geom_smooth(data = stats_salary_data, aes(x = `2PA`, y = SALARY), method = 'lm')
 
 plot_nonlinear4 <- ggplot() +
-  geom_point(data = stats_salary_data, aes(x = ORB, y = SALARY)) +
-  geom_smooth(data = stats_salary_data, aes(x = ORB, y = SALARY), method = 'lm')
+  geom_point(data = stats_salary_data, aes(x = ORB, y = SALARY)) 
+  # geom_smooth(data = stats_salary_data, aes(x = ORB, y = SALARY), method = 'lm')
 
 plot_nonlinear5 <- ggplot() +
-  geom_point(data = stats_salary_data, aes(x = POINTS, y = SALARY)) +
-  geom_smooth(data = stats_salary_data, aes(x = POINTS, y = SALARY), method = 'lm')
+  geom_point(data = stats_salary_data, aes(x = POINTS, y = SALARY))
+  # geom_smooth(data = stats_salary_data, aes(x = POINTS, y = SALARY), method = 'lm')
 
 plot_nonlinear6 <- ggplot() +
-  geom_point(data = stats_salary_data, aes(x = W, y = SALARY)) +
-  geom_smooth(data = stats_salary_data, aes(x = W, y = SALARY), method = 'lm')
+  geom_point(data = stats_salary_data, aes(x = W, y = SALARY)) 
+  # geom_smooth(data = stats_salary_data, aes(x = W, y = SALARY), method = 'lm')
 
 grid.arrange(plot_nonlinear1, plot_nonlinear2, plot_nonlinear3, plot_nonlinear4, plot_nonlinear5, plot_nonlinear6
              , nrow = 3, ncol = 2)
@@ -485,7 +486,7 @@ grid.arrange(plot_nonlinear1, plot_nonlinear2, plot_nonlinear3, plot_nonlinear4,
 <br>
 <br>
 
-## Attempt at Non-Linear Models
+## Attempt at Non-Linear Models (Local Regression)
 ### Yeah.... No. Not conclusive.
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
@@ -536,7 +537,7 @@ players_with_stats_salary <- drop_na(players_with_stats_salary)
 ```
 
 <br>
-Below we take a look at 3P (black), FT (blue), FG (green), 2P (pink) relative to overall points per game.
+### Below we take a look at 3P (black), FT (blue), FG (green), 2P (pink) relative to overall points per game.
 <br>
 
 ```{r, message=FALSE, echo=FALSE}
