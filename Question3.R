@@ -23,6 +23,12 @@ team_name_crosswalk <- read_csv('raw_data/team_name_crosswalk.csv') #Doesn't map
 # Question 3/4: Predict salary based on social media stats or vice versa
 ######################################################
 
+# Adding salary to performance data
+players_with_stats_salary <- inner_join(players_with_stats_combined, salary
+                                        , by = c('PLAYER' =  'NAME'))
+players_with_stats_salary <- select(players_with_stats_salary, -POSITION.y, -TEAM.y, -SALARY2)
+players_with_stats_salary <- drop_na(players_with_stats_salary)
+
 # First let's predict salary based on a few social media stats
 
 # New tibble that only has player name, salary, wiki stats, twitter stats
@@ -83,6 +89,14 @@ wiki_only_plot <- ggplot() +
   xlab("Player Index") + ylab("Salary") + 
   ggtitle("Salary Predicted by Wiki Stats")
 
+wiki_only_plot
+
+# actual vs. predicted
+# SHOW THIS TO SHOW HOW IT DIDN'T WORK WELL
+wiki_actual_v_pred <- ggplot(data = test_set, aes(x = salary, y = salary_from_wiki)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual Salary") + ylab("Predicted Salary") + 
+  ggtitle("Actual vs Predicted - Wikipedia Stats")
 #````````````````````````````````````````````````````````````
 
 # Try model using just twitter stats, no page-view stats
@@ -109,7 +123,12 @@ twitter_only_plot <- ggplot() +
   ggtitle("Salary Predicted by Twitter Stats")
 
 # This is still really bad...
+twitter_only_plot
 
+twitter_actual_v_pred <- ggplot(data = test_set, aes(x = salary, y = salary_from_twitter)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual Salary") + ylab("Predicted Salary") + 
+  ggtitle("Actual vs Predicted - Twitter Combined Stats")
 #````````````````````````````````````````````````````````````````````
 
 # Those models are bad - let's use all three predictors next!
@@ -134,11 +153,81 @@ media_salary_plot <- ggplot() +
   xlab("Player Index") + ylab("Salary") + ylim(0, range(test_set$salary_from_wiki)[2]) +
   ggtitle("Salary Predicted by Media Stats")
 
+all_social_actual_v_pred <- ggplot(data = test_set, aes(x = salary, y = salary_from_media)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual Salary") + ylab("Predicted Salary") + 
+  ggtitle("Actual vs Predicted - Twitter and Wiki Stats")
+
 # Plot side-by-side
 grid.arrange(wiki_only_plot, twitter_only_plot, media_salary_plot, nrow = 1, ncol = 3)
+grid.arrange(wiki_actual_v_pred, twitter_actual_v_pred, all_social_actual_v_pred, nrow=1, ncol=3)
 range(players_wiki_twitter$salary)
+media_max_range <- range(test_set$salary_from_media)
 
 # RMSE is the lowest using all predictors, but still pretty bad overall. 
-# TODO: make more useful plots - do more exploration to see if we can make a better
-# predictor of salary based on social media and wikipedia stats, also explore if we can predict 
-# social media stats based on salary (other way around).
+# TODO - make the range of those graphs all the same - hard to compare right now
+
+# EXPLORING A LITTLE Q4
+# Can we predict PPG based on performance statistics?
+
+# Points by Position (already put this in EDA)
+players_with_stats_salary %>%
+  filter(POSITION.x %in% c('C', 'PF', 'PG', 'SF', 'SG')) %>% 
+  ggplot(aes(POSITION.x, POINTS)) +
+  geom_boxplot() +
+  labs(x = 'Position', y = 'Av. PPG') + 
+  ggtitle("Points By Position")
+
+
+# also let's graph points by position
+# Explore which predictors are statistically significant
+explore_ppg <- players_with_stats_salary %>%
+  select(-PLAYER) %>%
+  select(-X1) %>%
+  select(-Rk) %>%
+  select(-POSITION.x) %>%
+  select(-TEAM.x) %>%
+  lm(POINTS ~., data = .)
+
+summary(explore_ppg)
+
+# Looks like the predictors most correlated with points per game are:
+# FT, 3PA, FG 2P
+# Let's make a linear model to graph this
+# Make train and test sets
+train_set_points <- players_with_stats_salary %>%
+  sample_frac(0.75, replace=FALSE)
+
+test_set_points <- players_with_stats_salary %>%
+  setdiff(train_set_points)
+
+# THIS MODEL IS TOO GOOD!!!!!!
+ppg_model <- lm(POINTS ~ FT + `3P` + FG + `2P`, data=train_set_points)
+
+rmse(ppg_model, test_set_points)
+# Add predicted salary to test set
+test_set_points <- add_predictions(test_set_points, ppg_model)
+
+# Plots of predicted vs. actual for points based on those stats
+points_predicted_plot <- ggplot() +
+  geom_point(data = test_set_points, aes(x = seq(1:dim(test_set_points)[1]), y = POINTS), color="red") +
+  geom_point(data = test_set_points, aes(x = seq(1:dim(test_set_points)[1]), y = pred), color="blue") +
+  geom_smooth(data = test_set_points, aes(x = seq(1:dim(test_set_points)[1]), y = pred)) +
+  xlab("Player Index") + ylab("Points") + ylim(0, range(test_set_points$pred)[2]) +
+  ggtitle("Points Predicted by other Performance Stats")
+
+points_predicted_plot
+coef(ppg_model)
+
+# Plot actual vs. predicted points
+actual_v_pred_points <- ggplot(data = test_set_points, aes(x = POINTS, y = pred)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual PPG") + ylab("Predicted PPG") + 
+  ggtitle("Actual vs Predicted Points Per Game")
+actual_v_pred_points
+
+
+# Make sure that points isn't just a summary of those predictors
+players_with_stats_test <- players_with_stats_salary %>%
+  mutate(sum_4stats = FT+`3P`+`2P`)
+

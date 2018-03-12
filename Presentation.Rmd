@@ -517,11 +517,250 @@ rmse_summary %>%
   kable_styling(full_width = F, position = "left")
 ```
 
-# Question 2:
+# Question 2: Points per game based on other performance metrics?
 
+
+```{r, message=FALSE, echo=FALSE}
+# Adding salary to performance data
+players_with_stats_salary <- inner_join(players_with_stats_combined, salary
+                                        , by = c('PLAYER' =  'NAME'))
+players_with_stats_salary <- select(players_with_stats_salary, -POSITION.y, -TEAM.y, -SALARY2)
+players_with_stats_salary <- drop_na(players_with_stats_salary)
+
+```
+
+<br>
+Below we take a look at 3P (black), FT (blue), FG (green), 2P (pink) relative to overall points per game.
+<br>
+
+```{r, message=FALSE, echo=FALSE}
+eda_plot <- ggplot() +
+  geom_point(data = players_with_stats_salary, aes(x = `3P`, y = POINTS), color="black") +
+  geom_point(data = players_with_stats_salary, aes(x = FT, y = POINTS), color="blue") +
+  geom_point(data = players_with_stats_salary, aes(x = FG, y = POINTS), color="green") +
+  geom_point(data = players_with_stats_salary, aes(x = `2P`, y = POINTS), color="pink") +
+  xlab("Performance Statistics Points") + ylab("Points per Game") +
+  ggtitle("Points Relative to other Performance Stats")
+
+eda_plot
+
+```
+
+<br>
+
+### Create a simple linear model
+
+<br>
+
+```{r, message=FALSE, echo=FALSE, warning=TRUE}
+# Make train and test sets
+train_set_points <- players_with_stats_salary %>%
+  sample_frac(0.75, replace=FALSE)
+
+test_set_points <- players_with_stats_salary %>%
+  setdiff(train_set_points)
+
+# THIS MODEL IS TOO GOOD!!!!!!
+ppg_model <- lm(POINTS ~ FT + `3P` + FG + `2P`, data=train_set_points)
+
+# rmse_tab <- tibble(rmse = rmse(ppg_model, test_set_points)) %>%
+#   kable("html") %>%
+#   kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+
+# Add predicted salary to test set
+test_set_points <- add_predictions(test_set_points, ppg_model)
+
+# Plots of predicted vs. actual for points based on those stats
+points_predicted_plot <- ggplot() +
+  geom_point(data = test_set_points, aes(x = seq(1:dim(test_set_points)[1]), y = POINTS), color="red") +
+  geom_point(data = test_set_points, aes(x = seq(1:dim(test_set_points)[1]), y = pred), color="blue") +
+  geom_smooth(data = test_set_points, aes(x = seq(1:dim(test_set_points)[1]), y = pred)) +
+  xlab("Player Index") + ylab("Points") + ylim(0, range(test_set_points$pred)[2]) +
+  ggtitle("Points Predicted by other Performance Stats")
+
+# points_predicted_plot
+# coef(ppg_model)
+
+# Plot actual vs. predicted points
+actual_v_pred_points <- ggplot(data = test_set_points, aes(x = POINTS, y = pred)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual PPG") + ylab("Predicted PPG") + 
+  ggtitle("Actual vs Predicted Points Per Game")
+actual_v_pred_points
+
+```
+<br>
+
+### Wow, that looks nearly perfect! We also get an RMSE of just 0.07464396.
+#### Also, let's check to make sure that "Points" isn't simply just the sum of our predictors. It's not!
+
+<br>
+
+```{r, message=FALSE, echo=FALSE}
+test_set_points <- test_set_points %>%
+  mutate(summer = FT+`3P`+FG+`2P`)
+
+mini_table <- tibble(original_points = (test_set_points$POINTS)[1:10])
+mini_table <- mini_table %>%
+  mutate(pred_points = round((test_set_points$pred)[1:10], 2),
+         sum_col = (test_set_points$summer)[1:10])
+
+mini_table %>%
+  kable("html") %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
+
+```
+
+<br>
 
 # Question 3: Salary based on social media stats or vice versa?
+### These results are not great... check out some quick graphs using a linear model
+
 <br>
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# New tibble that only has player name, salary, wiki stats, twitter stats
+players_wiki_twitter <- select(players_with_salary_wiki_twitter, PLAYER)
+players_wiki_twitter <- players_wiki_twitter %>%
+  mutate(index = players_with_salary_wiki_twitter$X1,
+         salary = players_with_salary_wiki_twitter$SALARY_MILLIONS,
+         wiki_views = players_with_salary_wiki_twitter$PAGEVIEWS,
+         twitter_fav = players_with_salary_wiki_twitter$TWITTER_FAVORITE_COUNT,
+         twitter_RT = players_with_salary_wiki_twitter$TWITTER_RETWEET_COUNT)
+
+# drop rows with missing social media stats
+players_wiki_twitter <- drop_na(players_wiki_twitter)
+
+# Explore which predictors are statistically significant
+exploratory_mod <- players_wiki_twitter %>%
+  select(-PLAYER) %>%
+  select(-index) %>%
+  lm(salary ~., data = .)
+
+# summary(exploratory_mod)
+# Observe that wikipedia views, twitter favorites, and twitter retweets are
+# all statistically significant - twitter RT seems to be a bit less significant than the others
+
+# VALIDATION SET APPROACH
+# First make train and test sets
+train_set <- players_wiki_twitter %>%
+  sample_frac(0.75, replace=FALSE)
+
+test_set <- players_wiki_twitter %>%
+  setdiff(train_set)
+
+# Make linear regression model
+# Let's try just using wikipedia page views alone first
+glm_train <- lm(salary ~ wiki_views, data=train_set)
+
+# Add predicted salary 
+# glm_preds <- predict(glm_train, test_set, type="response")
+# final_preds <- predict(final_mod, newdata=list(age = age_grid), se=TRUE)
+# test_set <- mutate(test_set, glm_preds = glm_preds)
+
+test_set <- add_predictions(test_set, glm_train)
+test_set <- test_set %>% 
+  mutate(salary_from_wiki = pred) %>%
+  select(-pred)
+
+# Calculate root mean squared error 
+# rmse(glm_train, test_set)
+
+# Quick plot of predicted vs. actual values shows us that using only Wiki is not useful
+# these plots are NOT USEFUL - just looking at the predicted vs. actual
+wiki_only_plot <- ggplot() +
+  geom_point(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary)) +
+  geom_point(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary_from_wiki), color=
+               "red") +
+  geom_smooth(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary_from_wiki), color=
+                "red") +
+  xlab("Player Index") + ylab("Salary") + 
+  ggtitle("Salary vs. WikiViews")
+
+# actual vs. predicted
+# SHOW THIS TO SHOW HOW IT DIDN'T WORK WELL
+wiki_actual_v_pred <- ggplot(data = test_set, aes(x = salary, y = salary_from_wiki)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual Salary") + ylab("Predicted Salary") + 
+  ggtitle("WikiViews")
+#````````````````````````````````````````````````````````````
+
+# Try model using just twitter stats, no page-view stats
+twitter_only_model <- lm(salary ~ twitter_fav + twitter_RT, data=train_set)
+
+# Add predicted salary 
+test_set <- add_predictions(test_set, twitter_only_model)
+test_set <- test_set %>% 
+  mutate(salary_from_twitter = pred) %>%
+  select(-pred)
+
+# Calculate root mean squared error 
+# rmse(twitter_only_model, test_set)
+
+# Quick plot of predicted vs. actual values shows us that using only Wiki is not useful
+# these plots are NOT USEFUL - just looking at the predicted vs. actual
+twitter_only_plot <- ggplot() +
+  geom_point(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary)) +
+  geom_point(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary_from_twitter), color=
+               "green") +
+  geom_smooth(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary_from_twitter), color=
+                "green") +
+  xlab("Player Index") + ylab("Salary") +  ylim(0, range(test_set$salary_from_wiki)[2]) +
+  ggtitle("Salary vs. Twitter Stats")
+
+twitter_actual_v_pred <- ggplot(data = test_set, aes(x = salary, y = salary_from_twitter)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual Salary") + ylab("Predicted Salary") + 
+  ggtitle("Twitter Stats")
+#````````````````````````````````````````````````````````````````````
+
+# Those models are bad - let's use all three predictors next!
+# Make linear regression model
+# Let's try just using wikipedia page views alone first
+salary_vs_media_model <- lm(salary ~ wiki_views + twitter_fav + twitter_RT, data=train_set)
+
+# Add predicted salary 
+test_set <- add_predictions(test_set, salary_vs_media_model)
+test_set <- test_set %>% 
+  mutate(salary_from_media = pred) %>%
+  select(-pred)
+
+# Calculate root mean squared error 
+# rmse(salary_vs_media_model, test_set)
+
+# Plots of predicted vs. actual with twitter and wikipedia
+media_salary_plot <- ggplot() +
+  geom_point(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary)) +
+  geom_point(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary_from_media), color="blue") +
+  geom_smooth(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary_from_media)) +
+  xlab("Player Index") + ylab("Salary") + ylim(0, range(test_set$salary_from_wiki)[2]) +
+  ggtitle("Salary vs. Both")
+
+all_social_actual_v_pred <- ggplot(data = test_set, aes(x = salary, y = salary_from_media)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual Salary") + ylab("Predicted Salary") + 
+  ggtitle("All Media Stats")
+
+# Plot side-by-side
+grid.arrange(wiki_only_plot, twitter_only_plot, media_salary_plot, nrow = 1, ncol = 3)
+grid.arrange(wiki_actual_v_pred, twitter_actual_v_pred, all_social_actual_v_pred, nrow=1, ncol=3)
+```
+
+<br>
+
+#### Compare RMSE of each model:
+
+<br>
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# Gather RMSE and show
+rmse_tib <- tibble(wiki_rmse = rmse(glm_train, test_set))
+rmse_tib <- rmse_tib %>%
+  mutate(twitter_rmse = rmse(twitter_only_model, test_set),
+         media_rmse = rmse(salary_vs_media_model, test_set))
+rmse_tib %>%
+  kable("html") %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
+```
 <br>
 
 # Question 4: Team valuations from individual salaries? 
