@@ -8,15 +8,16 @@ author: "Julia Wilkins & Adrian Naranjo"
 ## Data
 
 * Found on Kaggle: https://www.kaggle.com/noahgift/social-power-nba
-* Contains combined performance data for players in the 2016-2017 season, and salary, Twitter engagement, and Wikipedia traffic data. 
+* Contains performance, salary, Wikipedia pageviews, and Twitter RT/Favorite data for players in the 2016-2017 season across 30 teams
+* Performance statistics: $n = 446, p = 36$
+* Social media statsitcs: $n = 239, p = 3$
 
-<br>
 
 ## We asked, can we predict...
 
 1. Salary from performance statistics?
-3. Salary based on social media stats or vice versa?
-4. Team valuations from individual salaries?
+2. Points per game based on other performance metrics?
+3. Salary based on social media stats?
 
 <br>
 
@@ -51,7 +52,7 @@ team_twitter_wiki <- drop_na(players_with_salary_wiki_twitter) %>%
   filter(!str_detect(TEAM, '/'))
 ```
 
-## Distribution of Individual Salaries
+## Salary EDA: Distribution of Individual Salaries
 ### Right Skewed: Keep this in mind. We'll cut the tail later.
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
@@ -150,16 +151,16 @@ ggplot(players_with_stats_salary, aes(x = PIE, y = SALARY)) +
 <br>
 <br>
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
-# ggplot(team_twitter_wiki) + 
+# ggplot(team_twitter_wiki) +
 #   geom_point(aes(total_pageviews, TEAM), color = 'red') +
 #   geom_point(aes(total_twitter_favorite, TEAM), color = 'blue') +
 #   geom_point(aes(total_twitter_retweet, TEAM), color = 'black') +
 #   labs(x = 'Social Media Statistics', y = 'Team')
-  # ggtitle("Social Media Stats per Team\n\n Red = WikiPageviews, Black = Twitter Retweets, Blue = Twitter Favorites")
+# ggtitle("Social Media Stats per Team\n\n Red = WikiPageviews, Black = Twitter Retweets, Blue = Twitter Favorites")
 ```
 
 
-# Question 1: Can we predict salary from performance statistics? 
+# Question 1: Can we predict **salary** from performance statistics? 
  <br>
  <br>
  
@@ -524,7 +525,9 @@ rmse_summary %>%
   kable_styling(full_width = F, position = "left")
 ```
 
-# Question 2: Points per game based on other performance metrics?
+<br>
+
+# Question 2: **Points per game** based on other performance metrics?
 
 
 ```{r, message=FALSE, echo=FALSE}
@@ -538,7 +541,13 @@ players_with_stats_salary <- drop_na(players_with_stats_salary)
 
 <br>
 
-### Below we take a look at 3P (black), FT (blue), FG (green), 2P (pink) relative to overall points per game.
+### Below we take a look at 3P (black), FT (blue), FG (green), 2P (pink) relative to overall points per game:
+
+* Choose to use 4 predictors: 3P, FT, FG, 2P because of statistical significance
+  + Tried using regsubsets but there were a lot of problems with collinearities
+  + Still found number of predictors to be 3-4 (predictors above)
+* "Points" is the player's average number of PPG, whereas these statistics are **quantity** of those shots made
+* Less 3's made overall, still trending upward with point total however
 
 <br>
 
@@ -560,6 +569,10 @@ eda_plot
 
 ### Create a simple linear model
 
+* Validation set approach with 0.75/0.25 train/test split
+* Simple linear regression model with 4 predictors does very well
+* Is this because the predictors are correlated **too well** with the response?
+
 <br>
 
 ```{r, message=FALSE, echo=FALSE, warning=TRUE}
@@ -572,10 +585,6 @@ test_set_points <- players_with_stats_salary %>%
 
 # THIS MODEL IS TOO GOOD!!!!!!
 ppg_model <- lm(POINTS ~ FT + `3P` + FG + `2P`, data=train_set_points)
-
-# rmse_tab <- tibble(rmse = rmse(ppg_model, test_set_points)) %>%
-#   kable("html") %>%
-#   kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
 
 # Add predicted salary to test set
 test_set_points <- add_predictions(test_set_points, ppg_model)
@@ -601,32 +610,61 @@ actual_v_pred_points
 ```
 <br>
 
-### Wow, that looks nearly perfect! We also get an RMSE of just 0.07464396.
-#### Also, let's check to make sure that "Points" isn't simply just the sum of our predictors. It's not!
-
-<br>
+### Almost too perfect... RMSE of just 0.075. Let's check to make sure that "Points" isn't simply just the sum of our predictors (-FG) multiplied by their point values. It's close, but not quite there. This is still unsettling, and probably not that useful.
 
 ```{r, message=FALSE, echo=FALSE}
 test_set_points <- test_set_points %>%
-  mutate(summer = FT+`3P`+FG+`2P`)
+  mutate(summer = 1*FT+3*`3P`+2*`2P`)
 
 mini_table <- tibble(original_points = (test_set_points$POINTS)[1:10])
 mini_table <- mini_table %>%
-  mutate(pred_points = round((test_set_points$pred)[1:10], 2),
+  mutate(pred_points = round((test_set_points$pred)[1:10], 3),
          sum_col = (test_set_points$summer)[1:10])
 
 mini_table %>%
   kable("html") %>%
   kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
-
 ```
 
 <br>
 
-# Question 3: Salary based on social media stats or vice versa?
-### These results are not great... check out some quick graphs using a linear model
+### For good measure, let's check out predicting points based on field goals alone - the make-up of shots that a person can have to generate the same number of points can vary so let's see if it learns this.
 
 <br>
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+ppg_model_fg <- lm(POINTS ~ FG, data=train_set_points)
+
+# Add predicted salary to test set
+test_set_points_fg <- add_predictions(test_set_points, ppg_model_fg)
+
+# Plots of predicted vs. actual for points based on those stats
+points_predicted_plot_fg <- ggplot() +
+  geom_point(data = test_set_points_fg, aes(x = seq(1:dim(test_set_points_fg)[1]), y = POINTS), color="red") +
+  geom_point(data = test_set_points_fg, aes(x = seq(1:dim(test_set_points_fg)[1]), y = pred), color="blue") +
+  geom_smooth(data = test_set_points_fg, aes(x = seq(1:dim(test_set_points_fg)[1]), y = pred)) +
+  xlab("Player Index") + ylab("Points") + ylim(0, range(test_set_points_fg$pred)[2]) +
+  ggtitle("Points Predicted by other Performance Stats") + theme(plot.title = element_text(hjust = 0.5))
+
+# Plot actual vs. predicted points
+actual_v_pred_points_fg <- ggplot(data = test_set_points_fg, aes(x = POINTS, y = pred)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual PPG") + ylab("Predicted PPG") + 
+  ggtitle("Actual vs Predicted Points Per Game - Field Goals as Only Predictor") + theme(plot.title = element_text(hjust = 0.5))
+actual_v_pred_points_fg
+
+
+```
+
+#### This feels a little better, and our test RMSE is now 1.15.
+
+<br>
+<br>
+
+# Question 3: **Salary** based on social media stats?
+
+### Weak positive correlation between salary and wikipedia pageviews with outliers 
+
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
 # New tibble that only has player name, salary, wiki stats, twitter stats
 players_wiki_twitter <- select(players_with_salary_wiki_twitter, PLAYER)
@@ -636,6 +674,24 @@ players_wiki_twitter <- players_wiki_twitter %>%
          wiki_views = players_with_salary_wiki_twitter$PAGEVIEWS,
          twitter_fav = players_with_salary_wiki_twitter$TWITTER_FAVORITE_COUNT,
          twitter_RT = players_with_salary_wiki_twitter$TWITTER_RETWEET_COUNT)
+
+wiki_eda_plot <- ggplot() +
+  geom_point(data = players_wiki_twitter, aes(x = wiki_views, y = salary)) + geom_smooth() +
+  xlab("Wikipedia Page Views") + ylab("Salary") + 
+  ggtitle("Salary vs. WikiViews") + theme(plot.title = element_text(hjust = 0.5))
+
+wiki_eda_plot
+
+```
+
+<br>
+
+### Make simple linear model for predicting **salary** based on Wikipedia pageviews alone, combined Twitter statistics, and then all 3 predictors.
+
+* Validation set approach with 0.75/0.25 train/test split
+
+<br>
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
 
 # drop rows with missing social media stats
 players_wiki_twitter <- drop_na(players_wiki_twitter)
@@ -662,18 +718,10 @@ test_set <- players_wiki_twitter %>%
 # Let's try just using wikipedia page views alone first
 glm_train <- lm(salary ~ wiki_views, data=train_set)
 
-# Add predicted salary 
-# glm_preds <- predict(glm_train, test_set, type="response")
-# final_preds <- predict(final_mod, newdata=list(age = age_grid), se=TRUE)
-# test_set <- mutate(test_set, glm_preds = glm_preds)
-
 test_set <- add_predictions(test_set, glm_train)
 test_set <- test_set %>% 
   mutate(salary_from_wiki = pred) %>%
   select(-pred)
-
-# Calculate root mean squared error 
-# rmse(glm_train, test_set)
 
 # Quick plot of predicted vs. actual values shows us that using only Wiki is not useful
 # these plots are NOT USEFUL - just looking at the predicted vs. actual
@@ -757,7 +805,7 @@ grid.arrange(wiki_actual_v_pred, twitter_actual_v_pred, all_social_actual_v_pred
 
 <br>
 
-#### Compare RMSE of each model:
+#### Compare Test RMSE of each model: 
 
 <br>
 (Note: RMSE is scaled in millions (i.e. 6.7 million))
@@ -771,161 +819,168 @@ rmse_tib %>%
   kable("html") %>%
   kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
 ```
+
 <br>
 
-# Question 4: Team valuations from individual salaries? 
- <br>
- <br>
- 
-## Valuations by Team
-### As expected, teams in bigger, more popular cities are generally are worth more
- 
-```{r, message=FALSE, echo=FALSE, warning=FALSE} 
-ggplot(team_valuations, aes(x = VALUE_MILLIONS
-                            ,y = TEAM
-                            ,size = VALUE_MILLIONS
-                            ,color = VALUE_MILLIONS)) +
-geom_point() +
-labs(x = 'Team Value', y = 'Team Name')
-```
-<br>
-<br>
+### These results are not great, and intuitively Wikipedia pageviews would be the only predictor we would expect to really correlate.
 
-## Valuation by Attendance
-### There looks to be some relationship between Attendance and Valuation
 
-```{r, message=FALSE, echo=FALSE, warning=FALSE} 
-# Shows attendance and team value are correlated
-ggplot(att_val_elo, aes(x = VALUE_MILLIONS
-                        ,y = AVG
-                        ,size = VALUE_MILLIONS
-                        ,color = VALUE_MILLIONS)) + 
-  geom_smooth(color = 'brown') +
-  geom_point() +
-  labs(y = 'Attendance', x = 'Team Value')
-```
-<br>
-<br>
 
-### To be exact...
 
-```{r, message=FALSE, echo=FALSE, warning=FALSE} 
-tibble(Correlation = cor(att_val_elo$VALUE_MILLIONS, att_val_elo$AVG)) %>% 
-  kable("html") %>% 
-  kable_styling(full_width = F, position = "left")
-```
-<br>
-<br>
 
-## Quickly: remove highly correlated predictors, perform forward elmination...
- 
-```{r, message=FALSE, echo=FALSE, warning=FALSE} 
-salary$TEAM <- str_replace(salary$TEAM, 'LA Clippers', 'Los Angeles Clippers')
+<!-- # Question 4: Team valuations from individual salaries?  -->
+<!--  <br> -->
+<!--  <br> -->
 
-# Same as the above but with extra fields
-salary_valuations_by_team2 <- left_join(salary, players_with_stats_combined, by = c('NAME' = 'PLAYER')) %>% 
-  group_by(TEAM.x) %>% 
-  summarise(total_salary = sum(SALARY2, na.rm = TRUE)
-            ,median_salary = median(SALARY2, na.rm = TRUE)
-            ,mean_salary = mean(SALARY2, na.rm = TRUE)
-            ,low_salary = min(SALARY2, na.rm = TRUE)
-            ,high_salary = max(SALARY2, na.rm = TRUE)
-            ,avg_age = median(AGE, na.rm = TRUE)
-            ,avg_FG = median(FG, na.rm = TRUE)
-            ,avg_FGA = median(FGA, na.rm = TRUE)
-            ,avg_3P = median(`3P`, na.rm = TRUE)
-            ,avg_3PA = median(`3PA`, na.rm = TRUE)
-            #,`avg_3P%` = avg_3P / avg_3PA
-            ,avg_2P = median(`2P`, na.rm = TRUE)
-            ,avg_2PA = median(`2PA`, na.rm = TRUE)
-            #,`avg_2P%` = avg_2P / avg_2PA
-            ,avg_FT = median(FT, na.rm = TRUE)
-            ,avg_FTA = median(FTA, na.rm = TRUE)
-            #,`avg_FT%` = avg_FT / avg_FTA
-            ,avg_ORB = median(ORB, na.rm = TRUE)
-            ,avg_DRB = median(DRB, na.rm = TRUE)
-            #,avg_TRB = median(TRB, na.rm = TRUE)
-            ,avg_AST = median(AST, na.rm = TRUE)
-            ,avg_STL = median(STL, na.rm = TRUE)
-            ,avg_BLK = median(BLK, na.rm = TRUE)
-            ,avg_TOV = median(TOV, na.rm = TRUE)
-            #,avg_PF = median(PF, na.rm = TRUE)
-            #,avg_POINTS = median(POINTS, na.rm = TRUE)
-            ,avg_GP = median(GP, na.rm = TRUE)
-            ,avg_MPG = median(MPG, na.rm = TRUE)
-            #,avg_ORPM = median(ORPM, na.rm = TRUE)
-            #,avg_DRPM = median(DRPM, na.rm = TRUE)
-            #,avg_RPM = median(RPM, na.rm = TRUE)
-            #,avg_WINS_RPM = median(WINS_RPM, na.rm = TRUE)
-            #,avg_PIE = median(PIE, na.rm = TRUE)
-            ,avg_PACE = median(PACE, na.rm = TRUE)
-            ,avg_W = median(W, na.rm = TRUE)) %>% 
-  right_join(team_valuations, by = c('TEAM.x' = 'TEAM')) %>% 
-  mutate(TEAM.x = factor(TEAM.x))
+<!-- ## Valuations by Team -->
+<!-- ### As expected, teams in bigger, more popular cities are generally are worth more -->
 
-# Remove qualitative columns and data which has a high correlation
-salary_valuations_by_team2 <- salary_valuations_by_team2 %>% 
-  # original select... commented out because we may be facing the curse
-  # of dimensionality
-  select(-TEAM.x, -median_salary, -avg_FGA, -avg_3PA, -avg_2PA, -avg_FTA)
-# select(VALUE_MILLIONS, total_salary, mean_salary, low_salary, high_salary)
+<!-- ```{r, message=FALSE, echo=FALSE, warning=FALSE}  -->
+<!-- ggplot(team_valuations, aes(x = VALUE_MILLIONS -->
+<!--                             ,y = TEAM -->
+<!--                             ,size = VALUE_MILLIONS -->
+<!--                             ,color = VALUE_MILLIONS)) + -->
+<!-- geom_point() + -->
+<!-- labs(x = 'Team Value', y = 'Team Name') -->
+<!-- ``` -->
+<!-- <br> -->
+<!-- <br> -->
 
-# Create variable to hold the number of predictors
-num_predictors <- dim(salary_valuations_by_team2)[2] - 1
+<!-- ## Valuation by Attendance -->
+<!-- ### There looks to be some relationship between Attendance and Valuation -->
 
-# Perform best-subsets 
-val_from_salary_model <- regsubsets(VALUE_MILLIONS ~ .
-                                    ,data = salary_valuations_by_team2
-                                    ,nvmax = num_predictors
-                                    ,method = 'forward')
+<!-- ```{r, message=FALSE, echo=FALSE, warning=FALSE}  -->
+<!-- # Shows attendance and team value are correlated -->
+<!-- ggplot(att_val_elo, aes(x = VALUE_MILLIONS -->
+<!--                         ,y = AVG -->
+<!--                         ,size = VALUE_MILLIONS -->
+<!--                         ,color = VALUE_MILLIONS)) +  -->
+<!--   geom_smooth(color = 'brown') + -->
+<!--   geom_point() + -->
+<!--   labs(y = 'Attendance', x = 'Team Value') -->
+<!-- ``` -->
+<!-- <br> -->
+<!-- <br> -->
 
-val_from_salary_summary <- summary(val_from_salary_model)
+<!-- ### To be exact... -->
 
-# Create tibble which contains data from results object
-val_from_salary_results <- tibble(num_pred = 1:num_predictors
-                                  ,rss = val_from_salary_summary$rss
-                                  ,rsquared = val_from_salary_summary$rsq
-                                  ,adj_rsquared = val_from_salary_summary$adjr2
-                                  ,cp = val_from_salary_summary$cp
-                                  ,bic = val_from_salary_summary$bic)
+<!-- ```{r, message=FALSE, echo=FALSE, warning=FALSE}  -->
+<!-- tibble(Correlation = cor(att_val_elo$VALUE_MILLIONS, att_val_elo$AVG)) %>%  -->
+<!--   kable("html") %>%  -->
+<!--   kable_styling(full_width = F, position = "left") -->
+<!-- ``` -->
+<!-- <br> -->
+<!-- <br> -->
 
-# RSS
-plot1 <- val_from_salary_results %>% 
-  ggplot(aes(num_pred, rss)) + 
-  geom_point() +
-  geom_vline(aes(xintercept = which.min(val_from_salary_results$rss)), color = 'red') +
-  xlab('Number of Predictors') +
-  ylab('RSS')
+<!-- ## Quickly: remove highly correlated predictors, perform forward elmination... -->
 
-# ADJ R-SQUARED
-plot2 <- val_from_salary_results %>% 
-  ggplot(aes(num_pred, adj_rsquared)) + 
-  geom_point() +
-  geom_vline(aes(xintercept = which.max(val_from_salary_results$adj_rsquared)), color = 'red') +
-  xlab('Number of Predictors') +
-  ylab('Adj R-squared')
+<!-- ```{r, message=FALSE, echo=FALSE, warning=FALSE}  -->
+<!-- salary$TEAM <- str_replace(salary$TEAM, 'LA Clippers', 'Los Angeles Clippers') -->
 
-# CP
-plot3 <- val_from_salary_results %>% 
-  ggplot(aes(num_pred, cp)) + 
-  geom_point() +
-  geom_vline(aes(xintercept = which.min(val_from_salary_results$cp)), color = 'red') +
-  xlab('Number of Predictors') +
-  ylab('Cp')
+<!-- # Same as the above but with extra fields -->
+<!-- salary_valuations_by_team2 <- left_join(salary, players_with_stats_combined, by = c('NAME' = 'PLAYER')) %>%  -->
+<!--   group_by(TEAM.x) %>%  -->
+<!--   summarise(total_salary = sum(SALARY2, na.rm = TRUE) -->
+<!--             ,median_salary = median(SALARY2, na.rm = TRUE) -->
+<!--             ,mean_salary = mean(SALARY2, na.rm = TRUE) -->
+<!--             ,low_salary = min(SALARY2, na.rm = TRUE) -->
+<!--             ,high_salary = max(SALARY2, na.rm = TRUE) -->
+<!--             ,avg_age = median(AGE, na.rm = TRUE) -->
+<!--             ,avg_FG = median(FG, na.rm = TRUE) -->
+<!--             ,avg_FGA = median(FGA, na.rm = TRUE) -->
+<!--             ,avg_3P = median(`3P`, na.rm = TRUE) -->
+<!--             ,avg_3PA = median(`3PA`, na.rm = TRUE) -->
+<!--             #,`avg_3P%` = avg_3P / avg_3PA -->
+<!--             ,avg_2P = median(`2P`, na.rm = TRUE) -->
+<!--             ,avg_2PA = median(`2PA`, na.rm = TRUE) -->
+<!--             #,`avg_2P%` = avg_2P / avg_2PA -->
+<!--             ,avg_FT = median(FT, na.rm = TRUE) -->
+<!--             ,avg_FTA = median(FTA, na.rm = TRUE) -->
+<!--             #,`avg_FT%` = avg_FT / avg_FTA -->
+<!--             ,avg_ORB = median(ORB, na.rm = TRUE) -->
+<!--             ,avg_DRB = median(DRB, na.rm = TRUE) -->
+<!--             #,avg_TRB = median(TRB, na.rm = TRUE) -->
+<!--             ,avg_AST = median(AST, na.rm = TRUE) -->
+<!--             ,avg_STL = median(STL, na.rm = TRUE) -->
+<!--             ,avg_BLK = median(BLK, na.rm = TRUE) -->
+<!--             ,avg_TOV = median(TOV, na.rm = TRUE) -->
+<!--             #,avg_PF = median(PF, na.rm = TRUE) -->
+<!--             #,avg_POINTS = median(POINTS, na.rm = TRUE) -->
+<!--             ,avg_GP = median(GP, na.rm = TRUE) -->
+<!--             ,avg_MPG = median(MPG, na.rm = TRUE) -->
+<!--             #,avg_ORPM = median(ORPM, na.rm = TRUE) -->
+<!--             #,avg_DRPM = median(DRPM, na.rm = TRUE) -->
+<!--             #,avg_RPM = median(RPM, na.rm = TRUE) -->
+<!--             #,avg_WINS_RPM = median(WINS_RPM, na.rm = TRUE) -->
+<!--             #,avg_PIE = median(PIE, na.rm = TRUE) -->
+<!--             ,avg_PACE = median(PACE, na.rm = TRUE) -->
+<!--             ,avg_W = median(W, na.rm = TRUE)) %>%  -->
+<!--   right_join(team_valuations, by = c('TEAM.x' = 'TEAM')) %>%  -->
+<!--   mutate(TEAM.x = factor(TEAM.x)) -->
 
-# BIC
-plot4 <- val_from_salary_results %>% 
-  ggplot(aes(num_pred, bic)) + 
-  geom_point() +
-  geom_vline(aes(xintercept = which.min(val_from_salary_results$bic)), color = 'red') +
-  xlab('Number of Predictors') +
-  ylab('BIC')
+<!-- # Remove qualitative columns and data which has a high correlation -->
+<!-- salary_valuations_by_team2 <- salary_valuations_by_team2 %>%  -->
+<!--   # original select... commented out because we may be facing the curse -->
+<!--   # of dimensionality -->
+<!--   select(-TEAM.x, -median_salary, -avg_FGA, -avg_3PA, -avg_2PA, -avg_FTA) -->
+<!-- # select(VALUE_MILLIONS, total_salary, mean_salary, low_salary, high_salary) -->
 
-# Each of the measures comes up with vastly different number of 
-# predictors... 
-grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
-```
+<!-- # Create variable to hold the number of predictors -->
+<!-- num_predictors <- dim(salary_valuations_by_team2)[2] - 1 -->
 
-### $%*&! Looks weird. Done.
+<!-- # Perform best-subsets  -->
+<!-- val_from_salary_model <- regsubsets(VALUE_MILLIONS ~ . -->
+<!--                                     ,data = salary_valuations_by_team2 -->
+<!--                                     ,nvmax = num_predictors -->
+<!--                                     ,method = 'forward') -->
+
+<!-- val_from_salary_summary <- summary(val_from_salary_model) -->
+
+<!-- # Create tibble which contains data from results object -->
+<!-- val_from_salary_results <- tibble(num_pred = 1:num_predictors -->
+<!--                                   ,rss = val_from_salary_summary$rss -->
+<!--                                   ,rsquared = val_from_salary_summary$rsq -->
+<!--                                   ,adj_rsquared = val_from_salary_summary$adjr2 -->
+<!--                                   ,cp = val_from_salary_summary$cp -->
+<!--                                   ,bic = val_from_salary_summary$bic) -->
+
+<!-- # RSS -->
+<!-- plot1 <- val_from_salary_results %>%  -->
+<!--   ggplot(aes(num_pred, rss)) +  -->
+<!--   geom_point() + -->
+<!--   geom_vline(aes(xintercept = which.min(val_from_salary_results$rss)), color = 'red') + -->
+<!--   xlab('Number of Predictors') + -->
+<!--   ylab('RSS') -->
+
+<!-- # ADJ R-SQUARED -->
+<!-- plot2 <- val_from_salary_results %>%  -->
+<!--   ggplot(aes(num_pred, adj_rsquared)) +  -->
+<!--   geom_point() + -->
+<!--   geom_vline(aes(xintercept = which.max(val_from_salary_results$adj_rsquared)), color = 'red') + -->
+<!--   xlab('Number of Predictors') + -->
+<!--   ylab('Adj R-squared') -->
+
+<!-- # CP -->
+<!-- plot3 <- val_from_salary_results %>%  -->
+<!--   ggplot(aes(num_pred, cp)) +  -->
+<!--   geom_point() + -->
+<!--   geom_vline(aes(xintercept = which.min(val_from_salary_results$cp)), color = 'red') + -->
+<!--   xlab('Number of Predictors') + -->
+<!--   ylab('Cp') -->
+
+<!-- # BIC -->
+<!-- plot4 <- val_from_salary_results %>%  -->
+<!--   ggplot(aes(num_pred, bic)) +  -->
+<!--   geom_point() + -->
+<!--   geom_vline(aes(xintercept = which.min(val_from_salary_results$bic)), color = 'red') + -->
+<!--   xlab('Number of Predictors') + -->
+<!--   ylab('BIC') -->
+
+<!-- # Each of the measures comes up with vastly different number of  -->
+<!-- # predictors...  -->
+<!-- grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2) -->
+<!-- ``` -->
+
+<!-- ### $%*&! Looks weird. Done. -->
 <br>
 <br>

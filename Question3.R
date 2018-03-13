@@ -3,6 +3,8 @@ library(modelr)
 library(boot)
 library(leaps)
 library(gridExtra)
+library(boot)
+library(leaps)
 
 # PS = Performance Statistics
 att_val_elo <- read_csv('raw_data/nba_2017_att_val_elo.csv') # Attendance, valuation, and ELO
@@ -203,7 +205,7 @@ test_set_points <- players_with_stats_salary %>%
 
 # THIS MODEL IS TOO GOOD!!!!!!
 ppg_model <- lm(POINTS ~ FT + `3P` + FG + `2P`, data=train_set_points)
-
+# ppg_model <- lm(POINTS~ FG, data=train_set_points)
 rmse(ppg_model, test_set_points)
 # Add predicted salary to test set
 test_set_points <- add_predictions(test_set_points, ppg_model)
@@ -231,3 +233,53 @@ actual_v_pred_points
 players_with_stats_test <- players_with_stats_salary %>%
   mutate(sum_4stats = FT+`3P`+`2P`)
 
+
+
+# Select variables with best subsets
+regfit_first <- regsubsets(POINTS~., select(players_with_stats_salary, -PLAYER, -X1, -Rk), nvmax=35, method="forward")
+regfit_summary <- summary(regfit_first)
+
+
+# Create tibble which contains data from results object
+points_subset_data <- tibble(num_pred = 1:36
+                               ,rss = regfit_summary$rss
+                               ,rsquared = regfit_summary$rsq
+                               ,adj_rsquared = regfit_summary$adjr2
+                               ,cp = regfit_summary$cp
+                               ,bic = regfit_summary$bic)
+
+# RSS
+p1 <- points_subset_data %>% 
+  ggplot(aes(num_pred, rss)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(points_subset_data$rss)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('RSS')
+
+# ADJ R-SQUARED
+p2 <- points_subset_data %>% 
+  ggplot(aes(num_pred, adj_rsquared)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.max(points_subset_data$adj_rsquared)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('Adj R-squared')
+
+# CP
+p3 <- points_subset_data %>% 
+  ggplot(aes(num_pred, cp)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(points_subset_data$cp)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('Cp')
+
+# BIC
+p4 <- points_subset_data %>% 
+  ggplot(aes(num_pred, bic)) + 
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(points_subset_data$bic)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('BIC')
+
+grid.arrange(p1, p2, p3, p4, nrow = 2, ncol = 2)
+
+# Really all over the place...
