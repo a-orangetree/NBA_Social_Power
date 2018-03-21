@@ -1,0 +1,773 @@
+---
+title: "Social Power NBA Dataset - Final Report"
+author: "Julia Wilkins & Adrian Naranjo"
+---
+
+<br>
+
+# Introduction
+<p> For our final project, we chose to use the Social Power NBA Dataset (https://www.kaggle.com/noahgift/social-power-nba) which contains performance, salary, Wikipedia pageviews, and Twitter RT/Favorite data for individual NBA players in the 2016-2017 season across 30 teams. We chose to explore 3 main questions using this data, focusing primarily on Q1:
+<br>
+
+#### Can we predict...
+
+1. Salary from performance statistics?
+2. Points per game based on other performance metrics?
+3. Salary based on social media stats?
+
+We are slightly limited by the small sample size ($n$) of the dataset. For the performance statistics, we have $n = 446$ with a relatively large $p = 36$. Only $n = 237$ players had all available social media statistics ($p = 3$), which is also pretty limiting. In this report, we will focus primarily on Question 1, while Question 2 and 3 are a bit more exploratory. We will begin with a little Exploratory Data Analysis of different data components before explore the questions and then discussing conclusions and future work.
+
+<br>
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+library(tidyverse)
+library(modelr)
+library(boot)
+library(leaps)
+library(gridExtra)
+library(gam)
+library(knitr)
+library(kableExtra)
+```
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+
+# Loading processed and cleaned data files
+salary <- read_csv('data/processed/salary.csv')
+players_with_stats_combined <- read_csv('data/processed/players_with_stats_combined.csv')
+players_with_salary_wiki_twitter <- read_csv('data/processed/players_with_salary_wiki_twitter.csv')
+team_twitter_wiki <- read_csv("data/processed/team_twitter_wiki.csv")
+players_with_stats_salary <- read_csv("data/processed/players_with_stats_salary.csv")
+players_wiki_twitter <- read_csv("data/processed/players_wiki_twitter.csv")
+```
+
+# Exploratory Data Analysis (EDA) 
+
+### Salary EDA: Distribution of Individual Salaries
+
+<p> Here, we show the distribution of individual salaries and note that the the data is right skewed. We should cut this between $10-15 million.
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# Display histogram of salaries... not surprisingly, right skewed
+salary %>% 
+  ggplot(aes(SALARY2, labels = TRUE)) +
+  geom_histogram(binwidth = 2.5, color = "black", fill = "white") +
+  stat_bin(geom="text", aes(label = ..count..), binwidth = 2.5, position=position_stack(vjust=0.5)) +
+  labs(x = 'Salary (Millions)', y = 'Number of Players')
+```
+<p> Note: bins are $2.5 mil
+
+<br>
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# Find a quantiles
+quantiles <- quantile(salary$SALARY, seq(0, 1, .1)) 
+
+quantiles <- tibble(Percentile = names(quantiles)
+       ,Salary = quantiles)
+
+quantiles %>% 
+  kable("html") %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+<br>
+<br>
+
+### Salary EDA: Salary by Position and Median Salaries
+
+<p> As we examine salary by position, we see that centers have a slightly higher median salary than other positions.
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# Display salaries by position 
+# Removed rows that only display a position a 'F' or 'G'
+salary %>% 
+  filter(POSITION %in% c('C', 'PF', 'PG', 'SF', 'SG')) %>% 
+  ggplot(aes(POSITION, SALARY)) +
+  geom_boxplot() +
+  labs(x = 'Salary', y = 'Position')
+  # ggtitle("Salary By Position")
+
+# Calculate average salary/position
+salary %>% 
+    rename(Position = POSITION) %>% 
+    filter(Position %in% c('C', 'PF', 'PG', 'SF', 'SG')) %>% 
+    group_by(Position) %>% 
+    summarise(Avg_Salary = round(median(SALARY) / 1000000, digits = 2)) %>%
+    kable("html") %>%
+    kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+<br>
+<br>
+
+### Salary EDA: Salary by Age
+
+<p> Below we observe a reasonable conclusion - better players get paid more and keep playing for longer. We see that the highest density of players between ages 25 and 30, around which pay seems to level off a bit.
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# Exploring salary vs. age
+players_with_stats_salary <- inner_join(players_with_stats_combined, salary, by = c('PLAYER' =  'NAME'))
+players_with_stats_salary <- select(players_with_stats_salary, -POSITION.y, -TEAM.y, -SALARY2)
+players_with_stats_salary <- drop_na(players_with_stats_salary)
+
+# Correlation between Age and Salary. Took out outliers.
+players_with_stats_salary %>% 
+  filter(AGE >= 20, AGE <= 35) %>% 
+  ggplot(aes(x = AGE, y = SALARY)) +
+  geom_point() +
+  geom_smooth() 
+ # ggtitle("Age vs. Individual Salary")
+```
+<br>
+<br>
+
+### Salary EDA: Player Rating by Salary
+
+<p> Here we observe that players who are rated higher have higher salaries.
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# Correlation between between Player Effectiveness and Salary
+ggplot(players_with_stats_salary, aes(x = PIE, y = SALARY)) +
+  geom_point() +
+  geom_smooth() 
+  # ggtitle("Player Effectiveness vs. Salary")
+```
+<br>
+
+### Salary vs. Wikipedia Pageviews
+<p> We observe a very weak positive correlation between salary and pageviews, with some definite outliers.
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+wiki_eda_plot <- ggplot() +
+  geom_point(data = players_wiki_twitter, aes(x = wiki_views, y = salary)) + geom_smooth() +
+  xlab("Wikipedia Page Views") + ylab("Salary") +
+  ggtitle("Salary vs. WikiViews") + theme(plot.title = element_text(hjust = 0.5))
+
+wiki_eda_plot
+
+```
+
+### Performance EDA: Points per game vs. significant other stats
+
+<p> After assessing a simple linear model and viewing which predictors were statistically significant to points per game, below we examine a graph of 3P, 2P, FG, and FT vs. Points per game. We can observe that less 3's are made overall. We also see a lot of collinearity here that may cause problems later. Also note here that points per game is the the players average number of total points per game, whereas these stats represent the quantity of those shots made.
+<br>
+
+```{r, message=FALSE, echo=FALSE}
+eda_plot <- ggplot() +
+  geom_point(data = players_with_stats_salary, aes(x = `3P`, y = POINTS, color="3P")) +
+  geom_point(data = players_with_stats_salary, aes(x = FT, y = POINTS, color="FT")) +
+  geom_point(data = players_with_stats_salary, aes(x = FG, y = POINTS, color="FG")) +
+  geom_point(data = players_with_stats_salary, aes(x = `2P`, y = POINTS, color="2P")) +
+  scale_color_manual("", breaks=c("3P", "FT", "FG", "2P"), values=c("3P"="green", "FT"="blue", "FG"="pink", "2P"="black")) +
+  xlab("Performance Statistics Points") + ylab("Points per Game") +
+  ggtitle("Points Relative to other Performance Stats") + theme(plot.title = element_text(hjust = 0.5))
+
+eda_plot
+
+```
+<br>
+<br>
+
+
+# Question 1: Can we predict **salary** from performance statistics? 
+ <br>
+ <br>
+
+<p> First, we must examine which predictors we want to use for this task. We first attempted to use all predictors, leading to a lot of issues with collinearity. Then, we chose to eliminate 18 predictors based on simple statistical significance tests. This still left us with nearly 20 predictors, so next we moved towards best subset selection. Belw are the summary graphs for the best subset elimination: 
+
+<br>
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# names(players_with_stats_salary)
+
+stats_salary_data <- players_with_stats_salary %>%
+  # Because each statistic below indicates a different model has the
+  # smallest test error, this line creates a smaller dataset for comparison
+  select(-PLAYER, -X1, -POSITION.x, -TEAM.x, -RPM, -Rk, -`FG%`, -`3P%`, -`2P%`, -`eFG%`,
+         -`FT%`, -TRB, -ORPM, -DRPM, -WINS_RPM, -PLAYER, -X1, -MP) %>%
+  # this is the original select
+  # select(-PLAYER, -X1, -POSITION.x, -TEAM.x, -RPM) %>%
+  filter(SALARY <= quantile(salary$SALARY, .95))
+```
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# Create variable to hold the number of predictors
+num_predictors <- dim(stats_salary_data)[2] - 1
+
+# Perform best-subsets
+stats_salary_model <- regsubsets(SALARY ~ .
+                                 ,data = stats_salary_data
+                                 ,nvmax = num_predictors)
+
+stats_salary_summary <- summary(stats_salary_model)
+
+# Create tibble which contains data from results object
+stats_salary_results <- tibble(num_pred = 1:num_predictors
+                               ,rss = stats_salary_summary$rss
+                               ,rsquared = stats_salary_summary$rsq
+                               ,adj_rsquared = stats_salary_summary$adjr2
+                               ,cp = stats_salary_summary$cp
+                               ,bic = stats_salary_summary$bic)
+
+
+# RSS
+plot1_q1 <- stats_salary_results %>%
+  ggplot(aes(num_pred, rss)) +
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(stats_salary_results$rss)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('RSS')
+
+# ADJ R-SQUARED
+plot2_q1 <- stats_salary_results %>%
+  ggplot(aes(num_pred, adj_rsquared)) +
+  geom_point() +
+  geom_vline(aes(xintercept = which.max(stats_salary_results$adj_rsquared)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('Adj R-squared')
+
+# CP
+plot3_q1 <- stats_salary_results %>%
+  ggplot(aes(num_pred, cp)) +
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(stats_salary_results$cp)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('Cp')
+
+# BIC
+plot4_q1 <- stats_salary_results %>%
+  ggplot(aes(num_pred, bic)) +
+  geom_point() +
+  geom_vline(aes(xintercept = which.min(stats_salary_results$bic)), color = 'red') +
+  xlab('Number of Predictors') +
+  ylab('BIC')
+
+# Each of the measures comes up with vastly different number of
+# predictors...
+grid.arrange(plot1_q1, plot2_q1, plot3_q1, plot4_q1, nrow = 2, ncol = 2)
+```
+<br>
+<br>
+
+<p> Best subset selection was not very helpful as you can see in the grpahs above. The number of predictors is all over the place and inconclusive. Next, we created a lot of models to try out different amounts of predictors (4-10 + gamma). We made training and testing sets originally by performing a randomized 0.8/0.2 train/test split. Below is a table of the predictors used in these models as well as the actual vs. predicted results for each model. We do not observe much difference between these plots sadly. The test MSE is also shown further (scale is salary in millions). The model using gamma was nearly twice as bad as others, and the others had a test MSE of around 3.5 million, which is not great but not horrible, either.
+<br>
+
+#### Predictors used by model
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# Create training and test data sets
+training_data_q1 <- stats_salary_data %>% sample_frac(.8)
+test_data_q1 <- setdiff(stats_salary_data, training_data_q1)
+
+# Fit model using the coefficients above and add predictions to test data
+salary_model4 <- lm(SALARY ~ AGE + `2PA` + MPG + W, data = training_data_q1)
+salary_model5 <- lm(SALARY ~ AGE + `2P` + `2PA` + MPG + W, data = training_data_q1)
+salary_model6 <- lm(SALARY ~ AGE + `2P` + `2PA` + ORB + POINTS + W, data = training_data_q1)
+salary_model7 <- lm(SALARY ~ AGE + `2P` + `2PA` + ORB + POINTS + W + TOV, data = training_data_q1)
+salary_model8 <- lm(SALARY ~ AGE + `2P` + `2PA` + ORB + POINTS + W + TOV + STL, data = training_data_q1)
+salary_model9 <- lm(SALARY ~ AGE + FGA + `2P` + `3PA` + ORB + POINTS + W + TOV + MPG, data = training_data_q1)
+salary_model10 <- lm(SALARY ~ AGE + FGA + `3PA` + `2P` + `2PA` + ORB + TOV + POINTS + MPG + W, data = training_data_q1)
+
+test_data_q1 <- add_predictions(test_data_q1, salary_model4, var = 'pred_lm4')
+test_data_q1 <- add_predictions(test_data_q1, salary_model5, var = 'pred_lm5')
+test_data_q1 <- add_predictions(test_data_q1, salary_model6, var = 'pred_lm6')
+test_data_q1 <- add_predictions(test_data_q1, salary_model7, var = 'pred_lm7')
+test_data_q1 <- add_predictions(test_data_q1, salary_model8, var = 'pred_lm8')
+test_data_q1 <- add_predictions(test_data_q1, salary_model9, var = 'pred_lm9')
+test_data_q1 <- add_predictions(test_data_q1, salary_model10, var = 'pred_lm10')
+
+salary_model_gamma <- glm(SALARY ~ AGE + `2P` + `2PA` + ORB + MPG, data = training_data_q1, family = Gamma(link = "log"))
+test_data_q1 <- mutate(test_data_q1, pred_glm = predict(salary_model_gamma, test_data_q1, type = 'response'))
+
+text_tbl <- data.frame(
+  NumberOfPredictors = c("4", "5", "6", "7", "8", "9", "10", "5 (Gamma)"),
+  Predictors = c(
+    "Age, 2PA, MPG, W",
+    "Age, 2PA, MPG, W, 2P",
+    "Age, 2PA, W, 2P, ORB, POINTS",
+    "Age, 2PA, W, 2P, ORB, POINTS, TOV",
+    "Age, 2PA, W, 2P, ORB, POINTS, TOV, STL",
+    "Age, W, 2P, ORB, POINTS, TOV, MPG, 3PA, FGA",
+    "Age, W, 2P, ORB, POINTS, TOV, MPG, 3PA, FGA, 2PA",
+    "Age, 2PA, 2P, 2PA, ORB, MPG"
+  )
+)
+
+kable(text_tbl, "html") %>%
+  kable_styling(full_width = F, position = "left") %>%
+  column_spec(1, bold = T, border_right = T) %>%
+  column_spec(2, width = "30em")
+```
+<br>
+<br>
+
+#### Actual vs. Predicted Plots
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# Actual vs Predicted for linear model
+plot_lm4 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm4)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm4), method = 'lm') +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("4 Predictors") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_lm5 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm5)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm5), method = 'lm') +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("5 Predictors") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_lm6 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm6)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm6), method = 'lm') +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("6 Predictors") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_lm7 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm7)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm7), method = 'lm') +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("7 Predictors") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_lm8 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm8)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm8), method = 'lm') +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("8 Predictors") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_lm9 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm9)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm9), method = 'lm') +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("9 Predictors") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_lm10 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_lm10)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_lm10), method = 'lm') +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("10 Predictors") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot_glm <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_glm)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_glm), method = 'lm', color = "red") +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("5 (Gamma)") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+grid.arrange(plot_lm4, plot_lm5, plot_lm6, plot_lm7, plot_lm8, plot_lm9, plot_lm10, plot_glm, nrow = 4, ncol = 2)
+```
+<br>
+<br>
+
+#### Test MSE by model
+
+<br>
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+tibble(Model4 = rmse(salary_model4, test_data_q1)
+     ,Model5 = rmse(salary_model5, test_data_q1)
+     ,Model6 = rmse(salary_model6, test_data_q1)
+     ,Model7 = rmse(salary_model7, test_data_q1)
+     ,Model8 = rmse(salary_model8, test_data_q1)
+     ,Model9 = rmse(salary_model9, test_data_q1)
+     ,Model10 = rmse(salary_model10, test_data_q1)
+     ,Gamma = rmse(salary_model_gamma, test_data_q1)) %>%
+kable("html") %>%
+kable_styling(position = "left")
+```
+<br>
+<br>
+<p> We also wanted to try using k-fold cross validation. Below is the test MSE per model using cross validation, with $k=5$ folds. This did not show much sucess - we actually saw a slight increase in overall test MSE with this strategy.
+<br>
+
+#### K-fold Test MSE
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+stats_salary10fold <- stats_salary_data %>%
+  crossv_kfold(5, id = 'fold') %>%
+  mutate(train = map(train, as_tibble)) %>%
+  mutate(lm_model4 = map(train, ~ lm(SALARY ~ AGE + `2PA` + MPG + W, data = .))
+         ,lm_model5 = map(train, ~ lm(SALARY ~ AGE + `2P` + `2PA` + MPG + W, data = .))
+         ,lm_model6 = map(train, ~ lm(SALARY ~ AGE + `2P` + `2PA` + ORB + POINTS + W, data = .))
+         ,lm_model7 = map(train, ~ lm(SALARY ~ AGE + `2P` + `2PA` + ORB + POINTS + W + TOV, data = .))
+         ,lm_model8 = map(train, ~ lm(SALARY ~ AGE + `2P` + `2PA` + ORB + POINTS + W + TOV + STL, data = .))
+         ,lm_model9 = map(train, ~ lm(SALARY ~ AGE + FGA + `2P` + `3PA` + ORB + POINTS + W + TOV + MPG, data = .))
+         ,lm_model10 = map(train, ~ lm(SALARY ~ AGE + FGA + `3PA` + `2P` + `2PA` + ORB + TOV + POINTS + MPG + W, data = .))
+         ,glm_model = map(train
+                          , ~ glm(SALARY ~ AGE + `2P` + `2PA` + ORB + MPG, data = .
+                                  , family = Gamma(link = "log"))))
+
+rmse_lm4 <- stats_salary10fold %>%
+  mutate(rmse = map2_dbl(stats_salary10fold$lm_model4, stats_salary10fold$test, rmse)) %>%
+  summarise(mean_rmse = mean(rmse))
+
+rmse_lm5 <- stats_salary10fold %>%
+  mutate(rmse = map2_dbl(stats_salary10fold$lm_model5, stats_salary10fold$test, rmse)) %>%
+  summarise(mean_rmse = mean(rmse))
+
+rmse_lm6 <- stats_salary10fold %>%
+  mutate(rmse = map2_dbl(stats_salary10fold$lm_model6, stats_salary10fold$test, rmse)) %>%
+  summarise(mean_rmse = mean(rmse))
+
+rmse_lm7 <- stats_salary10fold %>%
+  mutate(rmse = map2_dbl(stats_salary10fold$lm_model7, stats_salary10fold$test, rmse)) %>%
+  summarise(mean_rmse = mean(rmse))
+
+rmse_lm8 <- stats_salary10fold %>%
+  mutate(rmse = map2_dbl(stats_salary10fold$lm_model8, stats_salary10fold$test, rmse)) %>%
+  summarise(mean_rmse = mean(rmse))
+
+rmse_lm9 <- stats_salary10fold %>%
+  mutate(rmse = map2_dbl(stats_salary10fold$lm_model9, stats_salary10fold$test, rmse)) %>%
+  summarise(mean_rmse = mean(rmse))
+
+rmse_lm10 <- stats_salary10fold %>%
+  mutate(rmse = map2_dbl(stats_salary10fold$lm_model10, stats_salary10fold$test, rmse)) %>%
+  summarise(mean_rmse = mean(rmse))
+
+rmse_glm <- stats_salary10fold %>%
+  mutate(rmse = map2_dbl(stats_salary10fold$glm_model, stats_salary10fold$test, rmse)) %>%
+  summarise(mean_rmse = mean(rmse))
+
+tibble(Model4 = rmse_lm4$mean_rmse
+                       ,Model5 = rmse_lm5$mean_rmse
+                       ,Model6 = rmse_lm6$mean_rmse
+                       ,Model7 = rmse_lm7$mean_rmse
+                       ,Model8 = rmse_lm8$mean_rmse
+                       ,Model9 = rmse_lm9$mean_rmse
+                       ,Model10 = rmse_lm10$mean_rmse
+                       ,Gamma = rmse_glm$mean_rmse) %>%
+kable("html") %>%
+kable_styling(position = "left")
+```
+<br>
+<br>
+
+<p> Above, our results are not very conclusive. We also wanted to briefly look into whether a non-linear model would work well. Below we plot prominent variables against salary to see if we see any patterns. Then, we use two local regression non-linear models using 3 and 4 predictors. This model looks fairly good, but we don't see a significant increase or decrease in Test MSE. Overall, all models here work fairly well but not necessarily good enough to ensure a close prediction of salary based on other performance metrics.
+
+<br>
+<br>
+
+
+#### Data patterns - would non-linear be good? 
+<br>
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+plot_nonlinear1 <- ggplot() +
+  geom_point(data = stats_salary_data, aes(x = AGE, y = SALARY))
+  # geom_smooth(data = stats_salary_data, aes(x = AGE, y = SALARY), method = 'lm')
+
+plot_nonlinear2 <- ggplot() +
+  geom_point(data = stats_salary_data, aes(x = `2P`, y = SALARY))
+  # geom_smooth(data = stats_salary_data, aes(x = `2P`, y = SALARY), method = 'lm')
+
+plot_nonlinear3 <- ggplot() +
+  geom_point(data = stats_salary_data, aes(x = `2PA`, y = SALARY))
+  # geom_smooth(data = stats_salary_data, aes(x = `2PA`, y = SALARY), method = 'lm')
+
+plot_nonlinear4 <- ggplot() +
+  geom_point(data = stats_salary_data, aes(x = ORB, y = SALARY))
+  # geom_smooth(data = stats_salary_data, aes(x = ORB, y = SALARY), method = 'lm')
+
+plot_nonlinear5 <- ggplot() +
+  geom_point(data = stats_salary_data, aes(x = POINTS, y = SALARY))
+  # geom_smooth(data = stats_salary_data, aes(x = POINTS, y = SALARY), method = 'lm')
+
+plot_nonlinear6 <- ggplot() +
+  geom_point(data = stats_salary_data, aes(x = W, y = SALARY))
+  # geom_smooth(data = stats_salary_data, aes(x = W, y = SALARY), method = 'lm')
+
+grid.arrange(plot_nonlinear1, plot_nonlinear2, plot_nonlinear3, plot_nonlinear4, plot_nonlinear5, plot_nonlinear6
+             , nrow = 3, ncol = 2)
+```
+<br>
+<br>
+
+####  Actual vs. Predicted results using a non-linear model
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+local_reg_model1 <- loess(SALARY ~ AGE + MPG + W, data = training_data_q1)
+local_reg_model2 <- loess(SALARY ~ AGE + MPG + W + POINTS, data = training_data_q1)
+
+test_data_q1 <- mutate(test_data_q1, pred_local1 = predict(local_reg_model1, test_data_q1, type = 'response'))
+test_data_q1 <- mutate(test_data_q1, pred_local2 = predict(local_reg_model2, test_data_q1, type = 'response'))
+
+nonlinear_plot1 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_local1)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_local1)) +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("Age + MPG + W") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+nonlinear_plot2 <- ggplot() +
+  geom_point(data = test_data_q1, aes(x = SALARY, y = pred_local2)) +
+  geom_smooth(data = test_data_q1, aes(x = SALARY, y = pred_local2)) +
+  labs(x = 'Actual', y = 'Predicted') +
+  ggtitle("Age + MPG + W + Points") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+grid.arrange(nonlinear_plot1, nonlinear_plot2, nrow = 2, ncol = 1)
+```
+<br>
+
+#### Test MSE using two nonlinear models
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+rmse_summary <- tibble(NonLinear_3P = rmse(local_reg_model1, test_data_q1)
+          ,NonLinear_4P= rmse(local_reg_model2, test_data_q1))
+
+rmse_summary %>%
+  kable("html") %>%
+  kable_styling(full_width = F, position = "left")
+```
+
+<br>
+
+# Question 2: Predicting  **Points per game** based on other performance metrics?
+<p> 
+First, we created a simple linear model to take a look at any predictors that jumped out as statistically significant in predicting points per game based on other performance metrics. Suprisingly, only 4 predictors were: 3P, FT, FG, and 2P. However, these predictors are almost too correlated, as we will see in our experiments below. Additionally, we tried using best subset selection to see which predictors we should use, but the results were all over the place due to the collinearity in the data. Some of the results (see graphs in `Question2.R`) showed that we should use 3-4 statistics, that of which we were already using (3P, FT, FG, 2P as stated above). Thus, we chose to first move forward with a linear regression model to predict points per game using these predictors. We used the validation set approach with a 0.75/0.25 train/test random split for the model. Below we see the actual vs. predicted points for this model.
+
+<br>
+
+```{r, message=FALSE, echo=FALSE, warning=TRUE}
+# Make train and test sets
+train_set_points <- players_with_stats_salary %>%
+  sample_frac(0.75, replace=FALSE)
+
+test_set_points <- players_with_stats_salary %>%
+  setdiff(train_set_points)
+
+# THIS MODEL IS TOO GOOD!!!!!!
+ppg_model <- lm(POINTS ~ FT + `3P` + FG + `2P`, data=train_set_points)
+
+# Add predicted salary to test set
+test_set_points <- add_predictions(test_set_points, ppg_model)
+
+# Plots of predicted vs. actual for points based on those stats
+points_predicted_plot <- ggplot() +
+  geom_point(data = test_set_points, aes(x = seq(1:dim(test_set_points)[1]), y = POINTS), color="red") +
+  geom_point(data = test_set_points, aes(x = seq(1:dim(test_set_points)[1]), y = pred), color="blue") +
+  geom_smooth(data = test_set_points, aes(x = seq(1:dim(test_set_points)[1]), y = pred)) +
+  xlab("Player Index") + ylab("Points") + ylim(0, range(test_set_points$pred)[2]) +
+  ggtitle("Points Predicted by other Performance Stats") + theme(plot.title = element_text(hjust = 0.5))
+
+# points_predicted_plot
+# coef(ppg_model)
+
+# Plot actual vs. predicted points
+actual_v_pred_points <- ggplot(data = test_set_points, aes(x = POINTS, y = pred)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual PPG") + ylab("Predicted PPG") +
+  ggtitle("Actual vs Predicted Points Per Game") + theme(plot.title = element_text(hjust = 0.5))
+actual_v_pred_points
+
+```
+<br>
+<p>
+
+Above, we see that this nearly perfect line is a little suspicious. The RMSE is just 0.075. Next, we check to make sure that the "Points" predictor isn't simply just the sum of our predictors (-FG) multiplied by their point values. It's close, but not quite there. This is still unsettling, and probably means that this model isn't super useful overall.
+
+```{r, message=FALSE, echo=FALSE}
+test_set_points <- test_set_points %>%
+  mutate(summer = 1*FT+3*`3P`+2*`2P`)
+
+mini_table <- tibble(original_points = (test_set_points$POINTS)[1:10])
+mini_table <- mini_table %>%
+  mutate(pred_points = round((test_set_points$pred)[1:10], 3),
+         sum_col = (test_set_points$summer)[1:10])
+
+mini_table %>%
+  kable("html") %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+<br>
+
+### Points per game based on FG alone?
+
+<p> Since adding these 4 predictors together seems like an obvious way to predict points per game, we wanted to see if the model could learn how to predict points per game based on field goals alone. This question is interesting in that the make-up of shots that a person can have to generate the same number of points can vary so much, so the model would actually be learning something significant here. Below the actual vs. predicted points per game based on field goals is shown. This model looks great, and isn't quite perfect, which is what we like to see. The RMSE is now 1.15.
+
+<br>
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+ppg_model_fg <- lm(POINTS ~ FG, data=train_set_points)
+
+# Add predicted salary to test set
+test_set_points_fg <- add_predictions(test_set_points, ppg_model_fg)
+
+# Plots of predicted vs. actual for points based on those stats
+points_predicted_plot_fg <- ggplot() +
+  geom_point(data = test_set_points_fg, aes(x = seq(1:dim(test_set_points_fg)[1]), y = POINTS), color="red") +
+  geom_point(data = test_set_points_fg, aes(x = seq(1:dim(test_set_points_fg)[1]), y = pred), color="blue") +
+  geom_smooth(data = test_set_points_fg, aes(x = seq(1:dim(test_set_points_fg)[1]), y = pred)) +
+  xlab("Player Index") + ylab("Points") + ylim(0, range(test_set_points_fg$pred)[2]) +
+  ggtitle("Points Predicted by other Performance Stats") + theme(plot.title = element_text(hjust = 0.5))
+
+# Plot actual vs. predicted points
+actual_v_pred_points_fg <- ggplot(data = test_set_points_fg, aes(x = POINTS, y = pred)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual PPG") + ylab("Predicted PPG") +
+  ggtitle("Actual vs Predicted Points Per Game - Field Goals as Only Predictor") + theme(plot.title = element_text(hjust = 0.5))
+actual_v_pred_points_fg
+
+
+```
+
+<br>
+<br>
+
+# Question 3: **Salary** based on social media stats?
+
+<p> For this question, we are interested in seeing if we can predict salary based on an individual's Wikipedia pageviews, personal Twitter retweets, and personal Twitter favorites. Intuitively, we would think that players with a higher salary have more pageviews (more famous), but in the EDA we saw that this correlation is pretty weak. Additionally, we know going into this that the Twitter predictions will be a bit of a shot in the dark - just because a player is more famous or has a higher salary doesn't necessarily mean they have more twitter activity. We also did not have data on every individual's endorsers/sponsors, which could cause some players to have more twitter activity.
+
+<br>
+Here we will use the validation set approach again with a random 0.75/0.25 train/test split. Since we are only looking at 3 predictors, we first create a model using only Wikipedia pageviews, before one using both Twitter stats combined and then finally a model using all three predictors.
+
+<br>
+
+#### Actual vs. Predicted Salaries (top is data against original, bottom is actual vs. predicted points)
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+
+# Explore which predictors are statistically significant
+exploratory_mod <- players_wiki_twitter %>%
+  select(-PLAYER) %>%
+  select(-index) %>%
+  lm(salary ~., data = .)
+
+# summary(exploratory_mod)
+# Observe that wikipedia views, twitter favorites, and twitter retweets are
+# all statistically significant - twitter RT seems to be a bit less significant than the others
+
+# VALIDATION SET APPROACH
+# First make train and test sets
+train_set <- players_wiki_twitter %>%
+  sample_frac(0.75, replace=FALSE)
+
+test_set <- players_wiki_twitter %>%
+  setdiff(train_set)
+
+# Make linear regression model
+# Let's try just using wikipedia page views alone first
+glm_train <- lm(salary ~ wiki_views, data=train_set)
+
+test_set <- add_predictions(test_set, glm_train)
+test_set <- test_set %>%
+  mutate(salary_from_wiki = pred) %>%
+  select(-pred)
+
+# Quick plot of predicted vs. actual values shows us that using only Wiki is not useful
+# these plots are NOT USEFUL - just looking at the predicted vs. actual
+wiki_only_plot <- ggplot() +
+  geom_point(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary)) +
+  geom_point(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary_from_wiki), color=
+               "red") +
+  geom_smooth(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary_from_wiki), color=
+                "red") +
+  xlab("Player Index") + ylab("Salary") +
+  ggtitle("Salary vs. WikiViews") + theme(plot.title = element_text(hjust = 0.5))
+
+# actual vs. predicted
+# SHOW THIS TO SHOW HOW IT DIDN'T WORK WELL
+wiki_actual_v_pred <- ggplot(data = test_set, aes(x = salary, y = salary_from_wiki)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual Salary") + ylab("Predicted Salary") +
+  ggtitle("WikiViews") + theme(plot.title = element_text(hjust = 0.5))
+#````````````````````````````````````````````````````````````
+
+# Try model using just twitter stats, no page-view stats
+twitter_only_model <- lm(salary ~ twitter_fav + twitter_RT, data=train_set)
+
+# Add predicted salary
+test_set <- add_predictions(test_set, twitter_only_model)
+test_set <- test_set %>%
+  mutate(salary_from_twitter = pred) %>%
+  select(-pred)
+
+# Calculate root mean squared error
+# rmse(twitter_only_model, test_set)
+
+# Quick plot of predicted vs. actual values shows us that using only Wiki is not useful
+# these plots are NOT USEFUL - just looking at the predicted vs. actual
+twitter_only_plot <- ggplot() +
+  geom_point(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary)) +
+  geom_point(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary_from_twitter), color=
+               "green") +
+  geom_smooth(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary_from_twitter), color=
+                "green") +
+  xlab("Player Index") + ylab("Salary") +  ylim(0, range(test_set$salary_from_wiki)[2]) +
+  ggtitle("Salary vs. Twitter Stats") + theme(plot.title = element_text(hjust = 0.5))
+
+twitter_actual_v_pred <- ggplot(data = test_set, aes(x = salary, y = salary_from_twitter)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual Salary") + ylab("Predicted Salary") +
+  ggtitle("Twitter Stats") + theme(plot.title = element_text(hjust = 0.5))
+#````````````````````````````````````````````````````````````````````
+
+# Those models are bad - let's use all three predictors next!
+# Make linear regression model
+# Let's try just using wikipedia page views alone first
+salary_vs_media_model <- lm(salary ~ wiki_views + twitter_fav + twitter_RT, data=train_set)
+
+# Add predicted salary
+test_set <- add_predictions(test_set, salary_vs_media_model)
+test_set <- test_set %>%
+  mutate(salary_from_media = pred) %>%
+  select(-pred)
+
+# Calculate root mean squared error
+# rmse(salary_vs_media_model, test_set)
+
+# Plots of predicted vs. actual with twitter and wikipedia
+media_salary_plot <- ggplot() +
+  geom_point(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary)) +
+  geom_point(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary_from_media), color="blue") +
+  geom_smooth(data = test_set, aes(x = seq(1:dim(test_set)[1]), y = salary_from_media)) +
+  xlab("Player Index") + ylab("Salary") + ylim(0, range(test_set$salary_from_wiki)[2]) +
+  ggtitle("Salary vs. Both") + theme(plot.title = element_text(hjust = 0.5))
+
+all_social_actual_v_pred <- ggplot(data = test_set, aes(x = salary, y = salary_from_media)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual Salary") + ylab("Predicted Salary") +
+  ggtitle("All Media Stats") + theme(plot.title = element_text(hjust = 0.5))
+
+# Plot side-by-side
+grid.arrange(wiki_only_plot, twitter_only_plot, media_salary_plot, nrow = 1, ncol = 3)
+grid.arrange(wiki_actual_v_pred, twitter_actual_v_pred, all_social_actual_v_pred, nrow=1, ncol=3)
+```
+
+<br>
+<p> We see above that the models using either only Wikipedia views or only Twitter data do very poorly - predicted points float around the mean salary. The model using all 3 predictors is a bit better, with predicted points are distributed a bit better. The test set here is small, so the results vary a lot on each run. Below the test MSE of each model is shown
+
+<br>
+
+#### Compare Test RMSE of each model:
+
+<br>
+(Note: RMSE is scaled in millions (i.e. 6.7 million))
+```{r, message=FALSE, echo=FALSE, warning=FALSE}
+# Gather RMSE and show
+rmse_tib <- tibble(wiki_rmse = rmse(glm_train, test_set))
+rmse_tib <- rmse_tib %>%
+  mutate(twitter_rmse = rmse(twitter_only_model, test_set),
+         media_rmse = rmse(salary_vs_media_model, test_set))
+rmse_tib %>%
+  kable("html") %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left")
+```
+
+<br>
+<br>
+
+# Conclusion and Future Steps
+<p> Above, we examined three questions using the NBA Social Power dataset. While the models in questions 1 and 3 were not extremely sucessful, we learned more about predictor choice and the curse of dimensionality, as well as which statistics (performance and social media) may affect a player's salary the most. Question 2 taught us to beware of problems with collinearity but we were able to craft nearly perfect model predictors of a player's points per game based on other performance metrics. 
+
+<p> Further thoughts that we had and discussed in class regarding the salary vs. social media exploration were that it is very hard to evaluate salary based on social media without other factors including team and individual sponsorships and endorsements among other things. It would be interested to explore this question further with that data. Additionally, since personal Twitter metrics are a little arbitrary, we would be interested in examining salary or player rating (PIE) vs. a player's twitter mentions or tags instead, which we would expect to correlate more. We would also be interested in exploring Question 2 further, using atypical predictors to predict points per game and diving deeper into subset selection. We could also definitely run a K-fold cross validation, as we did in Question 1, to observe how different numbers of predictors affected model performance.
+
+
+<br>

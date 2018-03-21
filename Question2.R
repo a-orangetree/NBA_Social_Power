@@ -3,158 +3,143 @@ library(modelr)
 library(boot)
 library(leaps)
 library(gridExtra)
+library(boot)
+library(leaps)
 
-# PS = Performance Statistics
-att_val_elo <- read_csv('raw_data/nba_2017_att_val_elo.csv') # Attendance, valuation, and ELO
-br <- read_csv('raw_data/nba_2017_br.csv') # 486 x 30 (PS)
-endorsements <- read_csv('raw_data/nba_2017_endorsements.csv')
-players_with_salary <- read_csv('raw_data/nba_2017_nba_players_with_salary.csv') # 342 x 39 (PS)
-pie <- read_csv('raw_data/nba_2017_pie.csv') # Player impoct estimation
-players_with_stats_combined <- read_csv('raw_data/nba_2017_players_stats_combined.csv') # 446 x 38 (PS)
-players_with_salary_wiki_twitter <- read_csv('raw_data/nba_2017_players_with_salary_wiki_twitter.csv') # 239 x 42 (PS)
-real_plus_minus <- read_csv('raw_data/nba_2017_real_plus_minus.csv') # 468 x 8 (Subset of PS?)
-salary <- read_csv('raw_data/nba_2017_salary.csv') %>% # 449 x 5
-  mutate(SALARY2 = (SALARY / 1000000)) 
-team_valuations <- read_csv('raw_data/nba_2017_team_valuations.csv')
-player_twitter <- read_csv('raw_data/nba_2017_twitter_players.csv') # 329 x 3
-team_name_crosswalk <- read_csv('raw_data/team_name_crosswalk.csv') #Doesn't map 100% from Short to Long
+#####################################################
+# Question 2: Can we predict PPG based on other performance statistics?
+######################################################
 
-###########################################################
-# Question2: Can we predict team valuations from individual salaries?
-###########################################################
+# Load processed dataset
+players_with_stats_salary <- read_csv("data/processed/players_with_stats_salary.csv")
 
-salary$TEAM <- str_replace(salary$TEAM, 'LA Clippers', 'Los Angeles Clippers')
+# Set consistent seed
+set.seed(1)
 
-# Same as the above but with extra fields
-salary_valuations_by_team2 <- left_join(salary, players_with_stats_combined, by = c('NAME' = 'PLAYER')) %>% 
-  group_by(TEAM.x) %>% 
-  summarise(total_salary = sum(SALARY2, na.rm = TRUE)
-            ,median_salary = median(SALARY2, na.rm = TRUE)
-            ,mean_salary = mean(SALARY2, na.rm = TRUE)
-            ,low_salary = min(SALARY2, na.rm = TRUE)
-            ,high_salary = max(SALARY2, na.rm = TRUE)
-            ,avg_age = median(AGE, na.rm = TRUE)
-            ,avg_FG = median(FG, na.rm = TRUE)
-            ,avg_FGA = median(FGA, na.rm = TRUE)
-            ,avg_3P = median(`3P`, na.rm = TRUE)
-            ,avg_3PA = median(`3PA`, na.rm = TRUE)
-            #,`avg_3P%` = avg_3P / avg_3PA
-            ,avg_2P = median(`2P`, na.rm = TRUE)
-            ,avg_2PA = median(`2PA`, na.rm = TRUE)
-            #,`avg_2P%` = avg_2P / avg_2PA
-            ,avg_FT = median(FT, na.rm = TRUE)
-            ,avg_FTA = median(FTA, na.rm = TRUE)
-            #,`avg_FT%` = avg_FT / avg_FTA
-            ,avg_ORB = median(ORB, na.rm = TRUE)
-            ,avg_DRB = median(DRB, na.rm = TRUE)
-            #,avg_TRB = median(TRB, na.rm = TRUE)
-            ,avg_AST = median(AST, na.rm = TRUE)
-            ,avg_STL = median(STL, na.rm = TRUE)
-            ,avg_BLK = median(BLK, na.rm = TRUE)
-            ,avg_TOV = median(TOV, na.rm = TRUE)
-            #,avg_PF = median(PF, na.rm = TRUE)
-            #,avg_POINTS = median(POINTS, na.rm = TRUE)
-            ,avg_GP = median(GP, na.rm = TRUE)
-            ,avg_MPG = median(MPG, na.rm = TRUE)
-            #,avg_ORPM = median(ORPM, na.rm = TRUE)
-            #,avg_DRPM = median(DRPM, na.rm = TRUE)
-            #,avg_RPM = median(RPM, na.rm = TRUE)
-            #,avg_WINS_RPM = median(WINS_RPM, na.rm = TRUE)
-            #,avg_PIE = median(PIE, na.rm = TRUE)
-            ,avg_PACE = median(PACE, na.rm = TRUE)
-            ,avg_W = median(W, na.rm = TRUE)) %>% 
-  right_join(team_valuations, by = c('TEAM.x' = 'TEAM')) %>% 
-  mutate(TEAM.x = factor(TEAM.x))
+# Explore which predictors are statistically significant
+explore_ppg <- players_with_stats_salary %>%
+  select(-PLAYER) %>%
+  select(-X1) %>%
+  select(-Rk) %>%
+  select(-POSITION.x) %>%
+  select(-TEAM.x) %>%
+  lm(POINTS ~., data = .)
 
-# cor(salary_valuations_by_team2)
+summary(explore_ppg)
 
-# Remove qualitative columns and data which has a high correlation
-salary_valuations_by_team2 <- salary_valuations_by_team2 %>% 
-  # original select... commented out because we may be facing the curse
-  # of dimensionality
-  select(-TEAM.x, -median_salary, -avg_FGA, -avg_3PA, -avg_2PA, -avg_FTA)
-# select(VALUE_MILLIONS, total_salary, mean_salary, low_salary, high_salary)
+# Looks like the predictors most correlated with points per game are: FT, 3PA, FG 2P
+# Let's make a linear model to graph this
+# Make train and test sets
+train_set_points <- players_with_stats_salary %>%
+  sample_frac(0.75, replace=FALSE)
 
-# Create variable to hold the number of predictors
-num_predictors <- dim(salary_valuations_by_team2)[2] - 1
+test_set_points <- players_with_stats_salary %>%
+  setdiff(train_set_points)
 
-# Perform best-subsets 
-val_from_salary_model <- regsubsets(VALUE_MILLIONS ~ .
-                                    ,data = salary_valuations_by_team2
-                                    ,nvmax = num_predictors
-                                    ,method = 'forward')
+# This model is too good - probably some collinearity
+ppg_model <- lm(POINTS ~ FT + `3P` + FG + `2P`, data=train_set_points)
 
-val_from_salary_summary <- summary(val_from_salary_model)
+# Add predicted salary to test set
+test_set_points <- add_predictions(test_set_points, ppg_model)
+
+# Plots of predicted vs. actual for points based on those stats
+points_predicted_plot <- ggplot() +
+  geom_point(data = test_set_points, aes(x = seq(1:dim(test_set_points)[1]), y = POINTS), color="red") +
+  geom_point(data = test_set_points, aes(x = seq(1:dim(test_set_points)[1]), y = pred), color="blue") +
+  geom_smooth(data = test_set_points, aes(x = seq(1:dim(test_set_points)[1]), y = pred)) +
+  xlab("Player Index") + ylab("Points") + ylim(0, range(test_set_points$pred)[2]) +
+  ggtitle("Points Predicted by other Performance Stats") + theme(plot.title = element_text(hjust = 0.5))
+
+# points_predicted_plot
+coef(ppg_model)
+
+# Plot actual vs. predicted points
+actual_v_pred_points <- ggplot(data = test_set_points, aes(x = POINTS, y = pred)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual PPG") + ylab("Predicted PPG") + 
+  ggtitle("Actual vs Predicted Points Per Game") + theme(plot.title = element_text(hjust = 0.5))
+actual_v_pred_points
+
+# Make sure that points isn't just a summary of those predictors
+test_set_points <- test_set_points %>%
+  mutate(summer = 1*FT+3*`3P`+2*`2P`)
+
+mini_table <- tibble(original_points = (test_set_points$POINTS)[1:10])
+mini_table <- mini_table %>%
+  mutate(pred_points = round((test_set_points$pred)[1:10], 3),
+         sum_col = (test_set_points$summer)[1:10])
+
+mini_table
+# Not quite, but close
+
+# What if we try just using FG to predict PPG?
+ppg_model_fg <- lm(POINTS ~ FG, data=train_set_points)
+
+# Add predicted salary to test set
+test_set_points_fg <- add_predictions(test_set_points, ppg_model_fg)
+
+# Plots of predicted vs. actual for points based on those stats
+points_predicted_plot_fg <- ggplot() +
+  geom_point(data = test_set_points_fg, aes(x = seq(1:dim(test_set_points_fg)[1]), y = POINTS), color="red") +
+  geom_point(data = test_set_points_fg, aes(x = seq(1:dim(test_set_points_fg)[1]), y = pred), color="blue") +
+  geom_smooth(data = test_set_points_fg, aes(x = seq(1:dim(test_set_points_fg)[1]), y = pred)) +
+  xlab("Player Index") + ylab("Points") + ylim(0, range(test_set_points_fg$pred)[2]) +
+  ggtitle("Points Predicted by other Performance Stats") + theme(plot.title = element_text(hjust = 0.5))
+
+# Plot actual vs. predicted points
+actual_v_pred_points_fg <- ggplot(data = test_set_points_fg, aes(x = POINTS, y = pred)) +
+  geom_point() + geom_smooth() +
+  xlab("Actual PPG") + ylab("Predicted PPG") + 
+  ggtitle("Actual vs Predicted Points Per Game - Field Goals as Only Predictor") + theme(plot.title = element_text(hjust = 0.5))
+actual_v_pred_points_fg
+
+# ----------- Trying out subset selection
+# Select variables with best subsets - problems because of high collinearity
+regfit_first <- regsubsets(POINTS~., select(players_with_stats_salary, -PLAYER, -X1, -Rk), nvmax=35, method="forward")
+regfit_summary <- summary(regfit_first)
+
 
 # Create tibble which contains data from results object
-val_from_salary_results <- tibble(num_pred = 1:num_predictors
-                                  ,rss = val_from_salary_summary$rss
-                                  ,rsquared = val_from_salary_summary$rsq
-                                  ,adj_rsquared = val_from_salary_summary$adjr2
-                                  ,cp = val_from_salary_summary$cp
-                                  ,bic = val_from_salary_summary$bic)
+points_subset_data <- tibble(num_pred = 1:36
+                             ,rss = regfit_summary$rss
+                             ,rsquared = regfit_summary$rsq
+                             ,adj_rsquared = regfit_summary$adjr2
+                             ,cp = regfit_summary$cp
+                             ,bic = regfit_summary$bic)
 
 # RSS
-plot1 <- val_from_salary_results %>% 
+p1 <- points_subset_data %>% 
   ggplot(aes(num_pred, rss)) + 
   geom_point() +
-  geom_vline(aes(xintercept = which.min(val_from_salary_results$rss)), color = 'red') +
+  geom_vline(aes(xintercept = which.min(points_subset_data$rss)), color = 'red') +
   xlab('Number of Predictors') +
   ylab('RSS')
 
 # ADJ R-SQUARED
-plot2 <- val_from_salary_results %>% 
+p2 <- points_subset_data %>% 
   ggplot(aes(num_pred, adj_rsquared)) + 
   geom_point() +
-  geom_vline(aes(xintercept = which.max(val_from_salary_results$adj_rsquared)), color = 'red') +
+  geom_vline(aes(xintercept = which.max(points_subset_data$adj_rsquared)), color = 'red') +
   xlab('Number of Predictors') +
   ylab('Adj R-squared')
 
 # CP
-plot3 <- val_from_salary_results %>% 
+p3 <- points_subset_data %>% 
   ggplot(aes(num_pred, cp)) + 
   geom_point() +
-  geom_vline(aes(xintercept = which.min(val_from_salary_results$cp)), color = 'red') +
+  geom_vline(aes(xintercept = which.min(points_subset_data$cp)), color = 'red') +
   xlab('Number of Predictors') +
   ylab('Cp')
 
 # BIC
-plot4 <- val_from_salary_results %>% 
+p4 <- points_subset_data %>% 
   ggplot(aes(num_pred, bic)) + 
   geom_point() +
-  geom_vline(aes(xintercept = which.min(val_from_salary_results$bic)), color = 'red') +
+  geom_vline(aes(xintercept = which.min(points_subset_data$bic)), color = 'red') +
   xlab('Number of Predictors') +
   ylab('BIC')
 
-# Each of the measures comes up with vastly different number of 
-# predictors... 
-grid.arrange(plot1, plot2, plot3, plot4, nrow = 2, ncol = 2)
+grid.arrange(p1, p2, p3, p4, nrow = 2, ncol = 2)
 
-coef(stats_salary_model, 1)
-
-# Take predictors from salary prediction and break out valuation based on
-# each individual predictor (create individual plots). If there is no
-# pattern, we may be able to conclude that the driver of valuation is
-# is not contained in our set of predictors (i.e. in this dataset)
-
-ggplot(data = salary_valuations_by_team2, aes(x = avg_age, y = VALUE_MILLIONS)) +
-  geom_point() +
-  geom_smooth(color = 'brown')
-
-ggplot(data = salary_valuations_by_team2, aes(x = avg_2P, y = VALUE_MILLIONS)) +
-  geom_point() +
-  geom_smooth(color = 'brown')
-
-ggplot(data = salary_valuations_by_team2, aes(x = avg_ORB, y = VALUE_MILLIONS)) +
-  geom_point() +
-  geom_smooth(color = 'brown')
-
-ggplot(data = salary_valuations_by_team2, aes(x = avg_MPG, y = VALUE_MILLIONS)) +
-  geom_point() +
-  geom_smooth(color = 'brown')
-
-ggplot(data = salary_valuations_by_team2, aes(x = avg_W, y = VALUE_MILLIONS)) +
-  geom_point() +
-  geom_smooth(color = 'brown')
-
-# Don't go higher than 2 degrees, if that
+# Results are really all over the place... but we do see that the number of predictors seems to converge around 3-4,
+# and on the ones we were already using above.

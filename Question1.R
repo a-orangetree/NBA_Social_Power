@@ -5,40 +5,17 @@ library(leaps)
 library(gridExtra)
 library(gam)
 
-# PS = Performance Statistics
-att_val_elo <- read_csv('raw_data/nba_2017_att_val_elo.csv') # Attendance, valuation, and ELO
-br <- read_csv('raw_data/nba_2017_br.csv') # 486 x 30 (PS)
-endorsements <- read_csv('raw_data/nba_2017_endorsements.csv')
-players_with_salary <- read_csv('raw_data/nba_2017_nba_players_with_salary.csv') # 342 x 39 (PS)
-pie <- read_csv('raw_data/nba_2017_pie.csv') # Player impoct estimation
-players_with_stats_combined <- read_csv('raw_data/nba_2017_players_stats_combined.csv') # 446 x 38 (PS)
-players_with_salary_wiki_twitter <- read_csv('raw_data/nba_2017_players_with_salary_wiki_twitter.csv') # 239 x 42 (PS)
-real_plus_minus <- read_csv('raw_data/nba_2017_real_plus_minus.csv') # 468 x 8 (Subset of PS?)
-salary <- read_csv('raw_data/nba_2017_salary.csv') %>% # 449 x 5
-  mutate(SALARY2 = (SALARY / 1000000)) 
-team_valuations <- read_csv('raw_data/nba_2017_team_valuations.csv')
-player_twitter <- read_csv('raw_data/nba_2017_twitter_players.csv') # 329 x 3
-team_name_crosswalk <- read_csv('raw_data/team_name_crosswalk.csv') #Doesn't map 100% from Short to Long
-
-
 ####################################################
 # Question 1: Can we predict salary from performance statistics?
 ###################################################
 
+# Load processed dataset
+players_with_stats_salary <- read_csv("data/processed/players_with_stats_salary.csv")
 
+# Set consistent seed
 set.seed(1)
 
-dim(players_with_stats_combined)
-dim(salary)
-
-# Adding salary to performance data
-players_with_stats_salary <- inner_join(players_with_stats_combined, salary
-                                        , by = c('PLAYER' =  'NAME'))
-players_with_stats_salary <- select(players_with_stats_salary, -POSITION.y, -TEAM.y, -SALARY2)
-
-players_with_stats_salary <- drop_na(players_with_stats_salary)
 head(players_with_stats_salary)
-dim(players_with_stats_salary)
 
 # Used the below to determine that RPM should be removed. Could
 # also remove ORPM and DRPM
@@ -208,33 +185,6 @@ rmse(salary_model10, test_data_q1)
 rmse(salary_model_gamma, test_data_q1)
 
 
-#########################################################################
-########### Do we need the below? (Does the same thing, but keep training and 
-########### test data sets inline.)
-##########################################################################
-# # Add columns to players
-# players_with_stats_salary <- players_with_stats_salary %>% 
-#   mutate(training = sample(c(TRUE, FALSE)
-#         , nrow(players_with_stats_salary), prob = c(.8, .2),rep = TRUE)
-#            ,testing = !training)
-# 
-# # Create linear model
-# salary_model1 <- lm(SALARY ~ AGE + POINTS, filter(players_with_stats_salary, training == TRUE))
-# summary(salary_model1)
-# 
-# # Why doesn't this work? ******************************************************************
-# # autoplot(salary_model1) 
-# 
-# # Add predictions back to data
-# players_with_stats_salary <-players_with_stats_salary %>% 
-#   add_predictions(salary_model1)
-# 
-# # Since the rmse() funciton isn't working, calcluate RMSE manually
-# players_with_stats_salary <-  players_with_stats_salary %>%
-#   mutate(actual_pred_diff = SALARY - pred
-#          ,actual_pred_diff_sq = actual_pred_diff^2)
-# 
-# sqrt(mean(players_with_stats_salary$actual_pred_diff_sq))
 ##########################################################################
 ########### K-Fold Cross Validation
 #############################################################################
@@ -355,19 +305,20 @@ rmse_summary <- rmse_summary %>%
 
 rmse_summary
 
-stop('Below is not useful')
-
-# Not needed. The above graphs show these will not be helpful.
-gam_age <- gam(SALARY ~ ns(AGE, 2) + `2PA` + MPG + W, data = training_data_q1)
-plot(gam_age)
-
-gam_2PA <- gam(SALARY ~ AGE + ns(`2PA`, 2) + MPG + W, data = training_data_q1)
-plot(gam_2PA)
-
-gam_MPG <- gam(SALARY ~ AGE + `2PA` + ns(MPG, 2) + W, data = training_data_q1)
-plot(gam_MPG)
-
-gam_W <- gam(SALARY ~ AGE + `2PA` + MPG + ns(W, 2), data = training_data_q1)
-plot(gam_W)
+# Tried GAMs - not useful
+# stop('Below is not useful')
+# 
+# # Not needed. The above graphs show these will not be helpful.
+# gam_age <- gam(SALARY ~ ns(AGE, 2) + `2PA` + MPG + W, data = training_data_q1)
+# plot(gam_age)
+# 
+# gam_2PA <- gam(SALARY ~ AGE + ns(`2PA`, 2) + MPG + W, data = training_data_q1)
+# plot(gam_2PA)
+# 
+# gam_MPG <- gam(SALARY ~ AGE + `2PA` + ns(MPG, 2) + W, data = training_data_q1)
+# plot(gam_MPG)
+# 
+# gam_W <- gam(SALARY ~ AGE + `2PA` + MPG + ns(W, 2), data = training_data_q1)
+# plot(gam_W)
 
 

@@ -1,0 +1,17 @@
+PROCESSED DATA FILES GUIDE:
+
+players_wiki_twitter.csv: includes only individual player's salary, wikipedia pageviews, twitter favorites, and twitter retweets
+
+salary.csv: includes player salary in millions and divided (30mil = 30.0), team, position, salary
+
+players_with_stats_combined.csv: individual players with position, age, and all performance metrics (no salary)
+
+players_with_salary_wiki_twitter.csv: players with all performance metrics, salary, and social media stats
+
+salary_valuations_by_team.csv: team salarys and salary breakdowns with team value
+
+team_twitter_wiki.csv: aggregated team wikiviews and twitter data
+
+players_with_stats_salary.csv: players with all performance data plus salary
+
+salary_valuations_by_team2.csv: includes salary, average team statistics, and salary metrics by team

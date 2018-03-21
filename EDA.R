@@ -2,34 +2,43 @@ library(tidyverse)
 library(gridExtra)
 
 ########################################################
-# Import files
+# First load all raw, unprocessed files
 ########################################################
 
 # PS = Performance Statistics
-att_val_elo <- read_csv('raw_data/nba_2017_att_val_elo.csv') # Attendance, valuation, and ELO
-br <- read_csv('raw_data/nba_2017_br.csv') # 486 x 30 (PS)
-endorsements <- read_csv('raw_data/nba_2017_endorsements.csv')
-players_with_salary <- read_csv('raw_data/nba_2017_nba_players_with_salary.csv') # 342 x 39 (PS)
-pie <- read_csv('raw_data/nba_2017_pie.csv') # Player impoct estimation
-players_with_stats_combined <- read_csv('raw_data/nba_2017_players_stats_combined.csv') # 446 x 38 (PS)
-players_with_salary_wiki_twitter <- read_csv('raw_data/nba_2017_players_with_salary_wiki_twitter.csv') # 239 x 42 (PS)
-real_plus_minus <- read_csv('raw_data/nba_2017_real_plus_minus.csv') # 468 x 8 (Subset of PS?)
-salary <- read_csv('raw_data/nba_2017_salary.csv') %>% # 449 x 5
+att_val_elo <- read_csv('data/unprocessed/nba_2017_att_val_elo.csv') # Attendance, valuation, and ELO
+br <- read_csv('data/unprocessed/nba_2017_br.csv') # 486 x 30 (PS)
+endorsements <- read_csv('data/unprocessed/nba_2017_endorsements.csv')
+players_with_salary <- read_csv('data/unprocessed/nba_2017_nba_players_with_salary.csv') # 342 x 39 (PS)
+pie <- read_csv('data/unprocessed/nba_2017_pie.csv') # Player impoct estimation
+players_with_stats_combined <- read_csv('data/unprocessed/nba_2017_players_stats_combined.csv') # 446 x 38 (PS)
+players_with_salary_wiki_twitter <- read_csv('data/unprocessed/nba_2017_players_with_salary_wiki_twitter.csv') # 239 x 42 (PS)
+real_plus_minus <- read_csv('data/unprocessed/nba_2017_real_plus_minus.csv') # 468 x 8 (Subset of PS?)
+salary <- read_csv('data/unprocessed/nba_2017_salary.csv') %>% # 449 x 5
   mutate(SALARY2 = (SALARY / 1000000)) 
-team_valuations <- read_csv('raw_data/nba_2017_team_valuations.csv')
-player_twitter <- read_csv('raw_data/nba_2017_twitter_players.csv') # 329 x 3
-team_name_crosswalk <- read_csv('raw_data/team_name_crosswalk.csv') #Doesn't map 100% from Short to Long
-
-glimpse(players_with_salary)
+team_valuations <- read_csv('data/unprocessed/nba_2017_team_valuations.csv')
+player_twitter <- read_csv('data/unprocessed/nba_2017_twitter_players.csv') # 329 x 3
+team_name_crosswalk <- read_csv('data/unprocessed/team_name_crosswalk.csv') #Doesn't map 100% from Short to Long
 
 # ################################################
-# # Combine / create data sets
+# Clean data and aggregate fields we're going to be using in the questions into a few main dataframes
+# Write out CSVs for the datasets we are mainly using (to access in the Questionx.R files)
 # ################################################
  
+# First write out some clean versions of the main data files
 salary$TEAM <- str_replace(salary$TEAM, 'LA Clippers', 'Los Angeles Clippers')
+salary <- drop_na(salary)
+write_csv(salary, file.path('data/processed', "salary.csv"))
 
-# Creates a dataframe with both salary and valuation by team
-salary_valuations_by_team <- salary %>%
+players_with_stats_combined <- drop_na(players_with_stats_combined)
+write_csv(players_with_stats_combined, file.path('data/processed', "players_with_stats_combined.csv"))
+
+players_with_salary_wiki_twitter <- drop_na(players_with_salary_wiki_twitter)
+write_csv(players_with_salary_wiki_twitter, file.path('data/processed', "players_with_salary_wiki_twitter.csv"))
+
+
+# Creates a dataframe with both salary statistics and valuation by team
+salary_valuations_by_team <- drop_na(salary) %>%
   group_by(TEAM) %>%
   summarise(total_salary = sum(SALARY2)
             ,median_salary = median(SALARY2)
@@ -38,6 +47,8 @@ salary_valuations_by_team <- salary %>%
             ,high_salary = max(SALARY2)) %>%
   inner_join(team_valuations, by = 'TEAM') %>%
   mutate(val_salary_ratio = VALUE_MILLIONS / total_salary)
+
+write_csv(salary_valuations_by_team, file.path('data/processed', "salary_valuations_by_team.csv"))
 
 # Aggregates social media statistics at a team level
 # Removes players which played for more than one team
@@ -48,17 +59,81 @@ team_twitter_wiki <- drop_na(players_with_salary_wiki_twitter) %>%
             ,total_twitter_retweet = sum(TWITTER_RETWEET_COUNT)) %>%
   filter(!str_detect(TEAM, '/'))
 
+write_csv(team_twitter_wiki, file.path('data/processed', "team_twitter_wiki.csv"))
+
+
+# Adding salary to performance data
+players_with_stats_salary <- inner_join(players_with_stats_combined, salary
+                                        , by = c('PLAYER' =  'NAME'))
+players_with_stats_salary <- select(players_with_stats_salary, -POSITION.y, -TEAM.y, -SALARY2)
+
+players_with_stats_salary <- drop_na(players_with_stats_salary)
+
+write_csv(players_with_stats_salary, file.path('data/processed', "players_with_stats_salary.csv"))
+
+
+# Same as the above but with extra fields about salary stats
+salary_valuations_by_team2 <- left_join(salary, players_with_stats_combined, by = c('NAME' = 'PLAYER')) %>% 
+  group_by(TEAM.x) %>% 
+  summarise(total_salary = sum(SALARY2, na.rm = TRUE)
+            ,median_salary = median(SALARY2, na.rm = TRUE)
+            ,mean_salary = mean(SALARY2, na.rm = TRUE)
+            ,low_salary = min(SALARY2, na.rm = TRUE)
+            ,high_salary = max(SALARY2, na.rm = TRUE)
+            ,avg_age = median(AGE, na.rm = TRUE)
+            ,avg_FG = median(FG, na.rm = TRUE)
+            ,avg_FGA = median(FGA, na.rm = TRUE)
+            ,avg_3P = median(`3P`, na.rm = TRUE)
+            ,avg_3PA = median(`3PA`, na.rm = TRUE)
+            ,avg_2P = median(`2P`, na.rm = TRUE)
+            ,avg_2PA = median(`2PA`, na.rm = TRUE)
+            ,avg_FT = median(FT, na.rm = TRUE)
+            ,avg_FTA = median(FTA, na.rm = TRUE)
+            ,avg_ORB = median(ORB, na.rm = TRUE)
+            ,avg_DRB = median(DRB, na.rm = TRUE)
+            ,avg_AST = median(AST, na.rm = TRUE)
+            ,avg_STL = median(STL, na.rm = TRUE)
+            ,avg_BLK = median(BLK, na.rm = TRUE)
+            ,avg_TOV = median(TOV, na.rm = TRUE)
+            ,avg_GP = median(GP, na.rm = TRUE)
+            ,avg_MPG = median(MPG, na.rm = TRUE)
+            ,avg_PACE = median(PACE, na.rm = TRUE)
+            ,avg_W = median(W, na.rm = TRUE)) %>% 
+  right_join(team_valuations, by = c('TEAM.x' = 'TEAM')) %>% 
+  mutate(TEAM.x = factor(TEAM.x))
+
+# cor(salary_valuations_by_team2)
+# Remove qualitative columns and data which has a high correlation
+salary_valuations_by_team2 <- salary_valuations_by_team2 %>% 
+  # original select... commented out because we may be facing the curse
+  # of dimensionality
+  select(-TEAM.x, -median_salary, -avg_FGA, -avg_3PA, -avg_2PA, -avg_FTA)
+
+# write out
+write_csv(salary_valuations_by_team2, file.path('data/processed', "salary_valuations_by_team2.csv"))
+
+
+# New tibble that only has player name, salary, wiki stats, twitter stats (Q3)
+players_wiki_twitter <- select(players_with_salary_wiki_twitter, PLAYER)
+players_wiki_twitter <- players_wiki_twitter %>%
+  mutate(index = players_with_salary_wiki_twitter$X1,
+         salary = players_with_salary_wiki_twitter$SALARY_MILLIONS,
+         wiki_views = players_with_salary_wiki_twitter$PAGEVIEWS,
+         twitter_fav = players_with_salary_wiki_twitter$TWITTER_FAVORITE_COUNT,
+         twitter_RT = players_with_salary_wiki_twitter$TWITTER_RETWEET_COUNT)
+
+# drop rows with missing social media stats
+players_wiki_twitter <- drop_na(players_wiki_twitter)
+
+# write out
+write_csv(players_wiki_twitter, file.path('data/processed', "players_wiki_twitter.csv"))
+
 
 ##############################################
 # Exploratory analysis begins here
 ##############################################
 
-# pie %>% select(-PLAYER, -TEAM) %>% cor()
-# pie %>% select(-PLAYER, -TEAM) %>% pairs()
-
-
 # Made the x monetary value due to difficult of fitting team names
-# Not a good graph
 ggplot(team_valuations, aes(x = VALUE_MILLIONS
                             ,y = TEAM
                             ,size = VALUE_MILLIONS
@@ -108,11 +183,18 @@ salary %>%
   geom_boxplot() +
   labs(x = 'Salary', y = 'Posiiton')
 
-
 (avg_salary <- salary %>% 
     filter(POSITION %in% c('C', 'PF', 'PG', 'SF', 'SG')) %>% 
     group_by(POSITION) %>% 
     summarise(avg_salary = median(SALARY) / 1000000))
+
+# Points by Position (already put this in EDA)
+players_with_stats_salary %>%
+  filter(POSITION.x %in% c('C', 'PF', 'PG', 'SF', 'SG')) %>% 
+  ggplot(aes(POSITION.x, POINTS)) +
+  geom_boxplot() +
+  labs(x = 'Position', y = 'Av. PPG') + 
+  ggtitle("Points By Position")
 
 # Which were the players that were not included in the above
 # Totals 13 players
@@ -165,13 +247,11 @@ cols <- c(total_pageviews = "red", total_twitter_favorite = "blue", total_twitte
 
 team_social_media + scale_colour_manual(
   values = c("red", "blue", "black")
-  # breaks = c(total_pageviews, total_twitter_favorite, total_twitter_retweet),
-  # labels = c("Pageviews", "Twitter Favorites", "Twitter Retweets")
 )
-# team_social_media <- team_social_media + scale_color_discrete(name="Stat", breaks=c("Black, Blue, Red", labels=c("Twitter Retweets", "Twitter Favorites", "Wikipedia Pageviews" )))
-team_social_media
+
+
 #############################################################
-# Differences why are there differences between data sets regarding 
+# Exploring why are there differences between data sets regarding 
 # the players which they contain?
 #############################################################
 
@@ -189,39 +269,9 @@ dim(players_with_salary_wiki_twitter) # Has one duplicate
 players_with_salary_wiki_twitter_players <- length(unique(players_with_salary_wiki_twitter$PLAYER)) # 238
 
 
-##########################################################
-# Why does players_with_stats_combined have 40 less observations than br?
-##########################################################
-
-# dim(players_with_stats_combined)
-# dim(br)
-
-# # But, shows no players missing???
-# players1 <- unique(players_with_stats_combined$PLAYER)
-# players2 <- unique(br$Player)
-
-# Not sure why these players are missing yet from the players_with_stats_combined
-# table. 
-# (missing_players <- setdiff(players2, players1))
-# filter(br, Player %in% missing_players)
-
-
 #######################################
 # Below seeks correlations between individual performance statistics and salary
 ######################################
-
-
-dim(players_with_stats_combined)
-dim(salary)
-
-# Adding salary to performance data
-players_with_stats_salary <- inner_join(players_with_stats_combined, salary
-                                        , by = c('PLAYER' =  'NAME'))
-players_with_stats_salary <- select(players_with_stats_salary, -POSITION.y, -TEAM.y, -SALARY2)
-
-players_with_stats_salary <- drop_na(players_with_stats_salary)
-head(players_with_stats_salary)
-dim(players_with_stats_salary)
 
 # Correlation between Age and Salary. Took out who are either very young or very old.
 # Not sure if meaningful...

@@ -1,5 +1,5 @@
 ---
-title: "Social Power NBA Dataset"
+title: "Social Power NBA Dataset - Presentation"
 author: "Julia Wilkins & Adrian Naranjo"
 ---
 
