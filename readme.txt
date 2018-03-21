@@ -1,8 +1,8 @@
 Final Project Structure:
 
-`Final_Report.html`/`Final_Report.rmd`: Our final writeup, including a walkthrough of our three main questions as well as some visual EDA, discussion, and conclusions/future work. Since we used an RMD for our presentation, all of the figures in here are the same as in the presentation. There is much more text and analysis and a deeper explanation of the choices made in these files.
+`Final_Report.html`/`Final_Report.rmd`: Our final writeup, including a walkthrough of our three main questions as well as some visual EDA, discussion, and conclusions/future work. Since we used an RMD for our presentation, all of the figures in here are the same as in the presentation. There is much more text and analysis and a deeper explanation of the choices made in these files. 
 
-`data` directory: contains `unprocessed` and `processed` subdirectories, containing all raw data files and then dataframes that we created and cleaned to use in our questions, respectively.
+`data` directory: contains `unprocessed` and `processed` subdirectories, containing all raw data files and then dataframes that we created and cleaned to use in our questions, respectively. `processed` contains more information about the CSVs in that folder.
 
 `EDA.R`: exploratory data analysis for our project
 
