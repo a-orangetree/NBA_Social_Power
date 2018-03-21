@@ -6,7 +6,7 @@ author: "Julia Wilkins & Adrian Naranjo"
 <br>
 
 # Introduction
-<p> For our final project, we chose to use the Social Power NBA Dataset (https://www.kaggle.com/noahgift/social-power-nba) which contains performance, salary, Wikipedia pageviews, and Twitter RT/Favorite data for individual NBA players in the 2016-2017 season across 30 teams. We chose to explore 3 main questions using this data, focusing primarily on Q1:
+<p> For our final project, we chose to use the Social Power NBA Dataset (https://www.kaggle.com/noahgift/social-power-nba) which contains performance, salary, Wikipedia pageviews, and Twitter retweet/favorite data for NBA players in the 2016-2017 season. We explored 3 questions using this data.
 <br>
 
 #### Can we predict...
@@ -15,7 +15,7 @@ author: "Julia Wilkins & Adrian Naranjo"
 2. Points per game based on other performance metrics?
 3. Salary based on social media stats?
 
-We are slightly limited by the small sample size ($n$) of the dataset. For the performance statistics, we have $n = 446$ with a relatively large $p = 36$. Only $n = 237$ players had all available social media statistics ($p = 3$), which is also pretty limiting. In this report, we will focus primarily on Question 1, while Question 2 and 3 are a bit more exploratory. We will begin with a little Exploratory Data Analysis of different data components before explore the questions and then discussing conclusions and future work.
+We had limitations due to the small sample size ($n$) of the dataset. For the performance statistics, we had $n = 446$, which was relatively small when compared to the number of predictors, $p = 36$. Only $n = 237$ players had all available social media statistics ($p = 3$). In this report, the focus is primarily on question 1, while question 2 and 3 are more exploratory. The report begins with a exploratory data analysis of the data before diving into the questions, and then discussing conclusions and future work.
 
 <br>
 
@@ -45,7 +45,7 @@ players_wiki_twitter <- read_csv("data/processed/players_wiki_twitter.csv")
 
 ### Salary EDA: Distribution of Individual Salaries
 
-<p> Here, we show the distribution of individual salaries and note that the the data is right skewed. We should cut this between $10-15 million.
+<p> Below is the distribution of individual salaries. Please note the right skewed. Given the long tail, we chose to only include players with salaries less than $10-15 million for question 1.
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
 # Display histogram of salaries... not surprisingly, right skewed
@@ -75,7 +75,7 @@ quantiles %>%
 
 ### Salary EDA: Salary by Position and Median Salaries
 
-<p> As we examine salary by position, we see that centers have a slightly higher median salary than other positions.
+<p> A view of salary by position reveals centers have a slightly higher median salary than other positions.
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
 # Display salaries by position 
 # Removed rows that only display a position a 'F' or 'G'
@@ -100,7 +100,7 @@ salary %>%
 
 ### Salary EDA: Salary by Age
 
-<p> Below we observe a reasonable conclusion - better players get paid more and keep playing for longer. We see that the highest density of players between ages 25 and 30, around which pay seems to level off a bit.
+<p> Below we observe a reasonable conclusion - better players get paid more and keep playing for longer. The highest density of players is between ages 25 and 30, around which pay seems to level off.
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
 # Exploring salary vs. age
@@ -121,7 +121,7 @@ players_with_stats_salary %>%
 
 ### Salary EDA: Player Rating by Salary
 
-<p> Here we observe that players who are rated higher have higher salaries.
+<p> Another reasonable insight is displayed below - players who are rated higher have higher salaries.
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
 # Correlation between between Player Effectiveness and Salary
@@ -133,7 +133,8 @@ ggplot(players_with_stats_salary, aes(x = PIE, y = SALARY)) +
 <br>
 
 ### Salary vs. Wikipedia Pageviews
-<p> We observe a very weak positive correlation between salary and pageviews, with some definite outliers.
+
+<p> Beginning with some social media statistics. There is a very weak positive correlation between salary and pageviews, with some clear outliers.
 
 ```{r, message=FALSE, echo=FALSE, warning=FALSE}
 wiki_eda_plot <- ggplot() +
@@ -147,7 +148,7 @@ wiki_eda_plot
 
 ### Performance EDA: Points per game vs. significant other stats
 
-<p> After assessing a simple linear model and viewing which predictors were statistically significant to points per game, below we examine a graph of 3P, 2P, FG, and FT vs. Points per game. We can observe that less 3's are made overall. We also see a lot of collinearity here that may cause problems later. Also note here that points per game is the the players average number of total points per game, whereas these stats represent the quantity of those shots made.
+<p> After assessing a simple linear model and viewing which predictors were statistically significant to points per game, below we examine a graph of points per game versus 3P, 2P, FG, and FT. We see that less 3's are made overall and a lot of collinearity exists which may cause problems later. Note: points per game is the player's average number of total points per game, whereas these features represent the quantity of those shots made (e.g. total three point shots made).
 <br>
 
 ```{r, message=FALSE, echo=FALSE}
@@ -158,7 +159,7 @@ eda_plot <- ggplot() +
   geom_point(data = players_with_stats_salary, aes(x = `2P`, y = POINTS, color="2P")) +
   scale_color_manual("", breaks=c("3P", "FT", "FG", "2P"), values=c("3P"="green", "FT"="blue", "FG"="pink", "2P"="black")) +
   xlab("Performance Statistics Points") + ylab("Points per Game") +
-  ggtitle("Points Relative to other Performance Stats") + theme(plot.title = element_text(hjust = 0.5))
+  ggtitle("Points per Game Relative to other Performance Stats") + theme(plot.title = element_text(hjust = 0.5))
 
 eda_plot
 
@@ -171,7 +172,7 @@ eda_plot
  <br>
  <br>
 
-<p> First, we must examine which predictors we want to use for this task. We first attempted to use all predictors, leading to a lot of issues with collinearity. Then, we chose to eliminate 18 predictors based on simple statistical significance tests. This still left us with nearly 20 predictors, so next we moved towards best subset selection. Belw are the summary graphs for the best subset elimination: 
+<p> Before answering the above question, what predictors will be used in the model? The first attempt used all predictors, leading to issues with collinearity. Then, 18 predictors were eliminated based on our domain knownledge. That still left nearly 20 predictors, far too many given the number of observation, so next best subset selection was used. Below are summary graphs for best subset elimination: 
 
 <br>
 
@@ -247,7 +248,7 @@ grid.arrange(plot1_q1, plot2_q1, plot3_q1, plot4_q1, nrow = 2, ncol = 2)
 <br>
 <br>
 
-<p> Best subset selection was not very helpful as you can see in the grpahs above. The number of predictors is all over the place and inconclusive. Next, we created a lot of models to try out different amounts of predictors (4-10 + gamma). We made training and testing sets originally by performing a randomized 0.8/0.2 train/test split. Below is a table of the predictors used in these models as well as the actual vs. predicted results for each model. We do not observe much difference between these plots sadly. The test MSE is also shown further (scale is salary in millions). The model using gamma was nearly twice as bad as others, and the others had a test MSE of around 3.5 million, which is not great but not horrible, either.
+<p> Due to the lack of agreement by the above graphs, best subset selection does not show to be very helpful. Despite that, using the predictors given by best subset selection, models with differing numbers of predictors are created, plus one model using gamma. Training and testing sets were created using a randomized 0.8/0.2 split. Below is a table of the predictors used in these models as well as the actual vs. predicted results for each model. Unforutunately, there is not a strong difference between their errors. Only the gamma model performed significantly worse, while the others had a test MSE of around 3.5 million (not very good). Note: the scale of the test MSE is in the millions as player salaries are also in the millions. 
 <br>
 
 #### Predictors used by model
@@ -382,7 +383,8 @@ kable_styling(position = "left")
 ```
 <br>
 <br>
-<p> We also wanted to try using k-fold cross validation. Below is the test MSE per model using cross validation, with $k=5$ folds. This did not show much sucess - we actually saw a slight increase in overall test MSE with this strategy.
+
+<p> In addition to validation set, an attempt at k-fold cross validation was also performed. Below is the test MSE per model using cross validation, with $k=5$ folds. This also did not show much sucess - actually a slight increase in overall test MSE was observed.
 <br>
 
 #### K-fold Test MSE
@@ -448,7 +450,7 @@ kable_styling(position = "left")
 <br>
 <br>
 
-<p> Above, our results are not very conclusive. We also wanted to briefly look into whether a non-linear model would work well. Below we plot prominent variables against salary to see if we see any patterns. Then, we use two local regression non-linear models using 3 and 4 predictors. This model looks fairly good, but we don't see a significant increase or decrease in Test MSE. Overall, all models here work fairly well but not necessarily good enough to ensure a close prediction of salary based on other performance metrics.
+<p> Thus, our results with a linear model are not very conclusive. However, perhaps a non-linear model would work better. Hence, below are plots of variables (determined by best subset selection) against salary. We had hoped to see patters within the data, but this was not the case. In addition, two local regression models using 3 and 4 predictors were performed. Due to the small number of observations, we chose to keep the number of predictors very small. While the model looks acceptable, there is no significant increase or decrease in Test MSE. Overall, all models are inconclusive. That is, they are not horrible, but not nearly good enough to ensure a good prediction of salary.
 
 <br>
 <br>
@@ -529,8 +531,8 @@ rmse_summary %>%
 <br>
 
 # Question 2: Predicting  **Points per game** based on other performance metrics?
-<p> 
-First, we created a simple linear model to take a look at any predictors that jumped out as statistically significant in predicting points per game based on other performance metrics. Suprisingly, only 4 predictors were: 3P, FT, FG, and 2P. However, these predictors are almost too correlated, as we will see in our experiments below. Additionally, we tried using best subset selection to see which predictors we should use, but the results were all over the place due to the collinearity in the data. Some of the results (see graphs in `Question2.R`) showed that we should use 3-4 statistics, that of which we were already using (3P, FT, FG, 2P as stated above). Thus, we chose to first move forward with a linear regression model to predict points per game using these predictors. We used the validation set approach with a 0.75/0.25 train/test random split for the model. Below we see the actual vs. predicted points for this model.
+
+<p> To begin, a simple linear model was performed to view predictors standing out as statistically significant. Suprisingly, only 4 predictors stood out: 3P, FT, FG, and 2P. However, these predictors are almost too correlated (as will be shown below). Additionally, best subset selection as used to determine the predictors to use, but the results were not consistent due to collinearity. Some results (see graphs in `Question2.R`) showed that we should use 3-4 statistics which we were already using (3P, FT, FG, 2P as stated above). Thus, we chose to first move forward with a linear regression to predict points per game using these predictors. To create training and testing data, a validation set approach as used with a 0.75/0.25 random split. Below we see the actual vs. predicted points for this model.
 
 <br>
 
@@ -570,7 +572,7 @@ actual_v_pred_points
 <br>
 <p>
 
-Above, we see that this nearly perfect line is a little suspicious. The RMSE is just 0.075. Next, we check to make sure that the "Points" predictor isn't simply just the sum of our predictors (-FG) multiplied by their point values. It's close, but not quite there. This is still unsettling, and probably means that this model isn't super useful overall.
+Reviewing the above shows a nearly perfect line which is a little suspicious. The RMSE is only 0.075. Are the "Points" simply the sum of our predictors (-FG) multiplied by their point values? While close, they are not the sum. This is still unsettling, and probably means that this model isn't very useful overall.
 
 ```{r, message=FALSE, echo=FALSE}
 test_set_points <- test_set_points %>%
@@ -590,7 +592,7 @@ mini_table %>%
 
 ### Points per game based on FG alone?
 
-<p> Since adding these 4 predictors together seems like an obvious way to predict points per game, we wanted to see if the model could learn how to predict points per game based on field goals alone. This question is interesting in that the make-up of shots that a person can have to generate the same number of points can vary so much, so the model would actually be learning something significant here. Below the actual vs. predicted points per game based on field goals is shown. This model looks great, and isn't quite perfect, which is what we like to see. The RMSE is now 1.15.
+<p> Since adding these 4 predictors together seems like an obvious way to predict points per game, can we ask the model to learn how to predict points per game based on field goals alone? This question is interesting in that the make-up of shots that a person can have to generate the same number of points can vary so much, so the model would actually be learning something significant here. Below the actual vs. predicted points per game based on field goals is shown. This model looks great, and isn't quite perfect (which is desirable). The RMSE is now 1.15.
 
 <br>
 
@@ -623,10 +625,11 @@ actual_v_pred_points_fg
 
 # Question 3: **Salary** based on social media stats?
 
-<p> For this question, we are interested in seeing if we can predict salary based on an individual's Wikipedia pageviews, personal Twitter retweets, and personal Twitter favorites. Intuitively, we would think that players with a higher salary have more pageviews (more famous), but in the EDA we saw that this correlation is pretty weak. Additionally, we know going into this that the Twitter predictions will be a bit of a shot in the dark - just because a player is more famous or has a higher salary doesn't necessarily mean they have more twitter activity. We also did not have data on every individual's endorsers/sponsors, which could cause some players to have more twitter activity.
+<p> For this question, can salary be predicted based on an individual's Wikipedia pageviews, personal Twitter retweets, and personal Twitter favorites? Intuitively, players with a higher salary have more pageviews (since they're more famous), but it has already been seen (in the EDA) that this correlation is weak. Additionally, we know Twitter predictions will be random - just because a player is more famous or has a higher salary doesn't necessarily mean they have more twitter activity. Data was also not available on every individual's endorsers/sponsors, which could cause some players to have more twitter activity.
 
 <br>
-Here we will use the validation set approach again with a random 0.75/0.25 train/test split. Since we are only looking at 3 predictors, we first create a model using only Wikipedia pageviews, before one using both Twitter stats combined and then finally a model using all three predictors.
+
+<p> The validation set approach is again used with a random 0.75/0.25 train/test split. Since there are only 3 predictors, we first create a model using only Wikipedia pageviews, before one using both Twitter stats combined and then finally a model using all three predictors.
 
 <br>
 
@@ -742,7 +745,7 @@ grid.arrange(wiki_actual_v_pred, twitter_actual_v_pred, all_social_actual_v_pred
 ```
 
 <br>
-<p> We see above that the models using either only Wikipedia views or only Twitter data do very poorly - predicted points float around the mean salary. The model using all 3 predictors is a bit better, with predicted points are distributed a bit better. The test set here is small, so the results vary a lot on each run. Below the test MSE of each model is shown
+<p> The above models using either only Wikipedia views or only Twitter data do very poorly - predicted points float around the mean salary. The model using all 3 predictors is a bit better, with predicted points are distributed a bit better. The test set here is small, so the results vary on each run. Below the test MSE of each model is shown
 
 <br>
 
@@ -765,9 +768,9 @@ rmse_tib %>%
 <br>
 
 # Conclusion and Future Steps
-<p> Above, we examined three questions using the NBA Social Power dataset. While the models in questions 1 and 3 were not extremely sucessful, we learned more about predictor choice and the curse of dimensionality, as well as which statistics (performance and social media) may affect a player's salary the most. Question 2 taught us to beware of problems with collinearity but we were able to craft nearly perfect model predictors of a player's points per game based on other performance metrics. 
+<p> Above, we examined three questions using the NBA Social Power dataset. While the models in questions 1 and 3 were not extremely sucessful, we learned more about predictor choice and the curse of dimensionality, as well as which statistics (performance and social media) which may affect a player's salary the most. Question 2 taught us to beware of problems with collinearity, but we were able to craft nearly perfect model of a player's points per game based on other performance metrics. 
 
-<p> Further thoughts that we had and discussed in class regarding the salary vs. social media exploration were that it is very hard to evaluate salary based on social media without other factors including team and individual sponsorships and endorsements among other things. It would be interested to explore this question further with that data. Additionally, since personal Twitter metrics are a little arbitrary, we would be interested in examining salary or player rating (PIE) vs. a player's twitter mentions or tags instead, which we would expect to correlate more. We would also be interested in exploring Question 2 further, using atypical predictors to predict points per game and diving deeper into subset selection. We could also definitely run a K-fold cross validation, as we did in Question 1, to observe how different numbers of predictors affected model performance.
+<p> Further thoughts that we had and discussed in class regarding the salary vs. social media exploration were the difficult to evaluate salary based on social media without other factors including team and individual sponsorships and endorsements, among others. It would be interesting to explore this question further with that data. Additionally, since personal Twitter metrics are somewhat arbitrary, we would be interested in examining salary or player rating (PIE) vs. a player's twitter mentions or tags instead, which we would expect to correlate more. We would also be interested in exploring Question 2 further, using atypical predictors to predict points per game and diving deeper into subset selection. We could also definitely run a K-fold cross validation, as we did in Question 1, to observe how different numbers of predictors affected model performance.
 
 
 <br>
